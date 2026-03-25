@@ -6,10 +6,11 @@ export interface RolePermission {
 export interface User {
   id: string;
   name: string;
-  email: string;
+  email?: string;
   role: 'owner' | 'admin' | 'seller';
   branch_id: string;
   branch_name?: string;
+  pin?: string;
 }
 
 export interface Category {

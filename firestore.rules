@@ -1,8 +1,80 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+    
+    function isOwnerOrAdmin() {
+      return isAuthenticated() && (getUserData().role == 'owner' || getUserData().role == 'admin');
+    }
+
+    function isOwner() {
+      return isAuthenticated() && getUserData().role == 'owner';
+    }
+
+    // Users collection
+    match /users/{userEmail} {
+      allow read: if isAuthenticated() && (request.auth.token.email == userEmail || isOwnerOrAdmin());
+      allow create: if isAuthenticated(); // Allow first user registration
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    // Branches, Categories, Products, RolePermissions
+    match /branches/{branchId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+    match /role_permissions/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
+    }
+
+    // Customers
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // Sales
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isOwnerOrAdmin(); // For refunds
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // Shifts and Cash Movements
+    match /shifts/{shiftId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwnerOrAdmin();
+    }
+    match /cash_movements/{movementId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    // Stock
+    match /branches/{branchId}/stock/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
   }
 }

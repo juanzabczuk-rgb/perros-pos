@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import bcrypt from 'bcryptjs';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -28,41 +29,43 @@ import {
   Check,
   ArrowRightLeft,
   MessageCircle,
+  RotateCcw,
   Menu,
   History,
-  RotateCcw,
   QrCode,
   Printer,
   Camera,
-  Utensils
+  Utensils,
+  Lock
 } from 'lucide-react';
 import { User, Product, Customer, CartItem, Sale, RolePermission, Branch, Shift, CashMovement, ProductComponent, PrinterSettings, TicketSettings } from './types';
-
+import { calcularTotal } from './utils/ventas';
 import { 
   collection, 
   doc, 
   setDoc, 
-  addDoc, 
   updateDoc, 
   deleteDoc, 
-  getDoc, 
+  getDoc,
   getDocs, 
   onSnapshot, 
   query, 
-  where, 
-  orderBy, 
+  where,
+  orderBy,
   limit, 
-  serverTimestamp, 
   runTransaction,
   writeBatch,
-  Timestamp,
-  DocumentReference
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  signOut
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 
@@ -117,10 +120,46 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 };
 
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallback?: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode, fallback?: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="p-8 text-center bg-white rounded-3xl border border-stone-100 shadow-sm">
+          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight mb-2">Algo salió mal</h2>
+          <p className="text-stone-500 text-sm mb-4">Ocurrió un error al cargar esta sección.</p>
+          <button 
+            onClick={() => this.setState({ hasError: false })}
+            className="bg-brand-red text-white px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-brand-red/20"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // --- Context ---
 interface AppContextType {
   user: User | null;
   setUser: (u: User | null) => void;
+  allUsers: User[];
   branch: any | null;
   setBranch: (b: any | null) => void;
   shift: any | null;
@@ -144,22 +183,19 @@ const useApp = () => {
 
 // --- Components ---
 
-const LoginScreen = ({ onLogin, onRegister, isFirstUser }: { 
-  onLogin: (e: string, p: string) => void, 
-  onRegister: (e: string, p: string) => void,
+const LoginScreen = ({ onGoogleLogin, onEmailLinkLogin, isFirstUser }: { 
+  onGoogleLogin: () => void,
+  onEmailLinkLogin: (email: string) => void,
   isFirstUser: boolean 
 }) => {
-  const [isRegistering, setIsRegistering] = useState(isFirstUser);
+  const [showEmailLink, setShowEmailLink] = useState(false);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [linkSent, setLinkSent] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleEmailLinkSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRegistering) {
-      onRegister(email, password);
-    } else {
-      onLogin(email, password);
-    }
+    onEmailLinkLogin(email);
+    setLinkSent(true);
   };
 
   return (
@@ -171,52 +207,88 @@ const LoginScreen = ({ onLogin, onRegister, isFirstUser }: {
       >
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-brand-yellow rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand-yellow/20 rotate-3">
-            <Store size={40} className="text-stone-900" />
+            <Utensils size={40} className="text-stone-900" />
           </div>
           <h1 className="text-3xl font-black tracking-tighter">Panchería POS</h1>
           <p className="text-stone-400 text-sm mt-2 font-medium">
-            {isRegistering ? 'Crear cuenta de administrador' : 'Inicie sesión para continuar'}
+            {isFirstUser ? 'Configurar cuenta de propietario' : 'Inicie sesión para continuar'}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Email</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
-              placeholder="admin@pancheria.com"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Contraseña</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <button 
-            type="submit"
-            className="w-full py-4 bg-brand-yellow text-stone-900 font-black rounded-2xl shadow-lg hover:bg-yellow-400 transition-all active:scale-95 mt-4"
-          >
-            {isRegistering ? 'Registrar Dueño' : 'Ingresar'}
-          </button>
-        </form>
-
-        <button 
-          onClick={() => setIsRegistering(!isRegistering)}
-          className="w-full mt-6 text-xs font-bold text-stone-500 hover:text-stone-300 transition-colors"
-        >
-          {isRegistering ? '¿Ya tienes cuenta? Ingresa aquí' : '¿Necesitas registrarte? Haz clic aquí'}
-        </button>
+        <div className="space-y-4">
+          {!showEmailLink ? (
+            <>
+              <button 
+                onClick={onGoogleLogin}
+                className="w-full py-4 bg-white text-stone-900 font-black rounded-2xl shadow-lg hover:bg-stone-100 transition-all active:scale-95 flex items-center justify-center gap-3"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Continuar con Google
+              </button>
+              
+              <button 
+                onClick={() => setShowEmailLink(true)}
+                className="w-full py-4 bg-stone-700 text-white font-bold rounded-2xl hover:bg-stone-600 transition-all text-xs uppercase tracking-widest"
+              >
+                Ingresar con Vínculo de Email
+              </button>
+            </>
+          ) : (
+            <form onSubmit={handleEmailLinkSubmit} className="space-y-4">
+              {linkSent ? (
+                <div className="text-center p-4 bg-green-900/20 rounded-2xl border border-green-900/30">
+                  <p className="text-sm text-green-400 font-bold">¡Vínculo enviado!</p>
+                  <p className="text-[10px] text-green-400/70 mt-1">Revise su correo electrónico para iniciar sesión.</p>
+                  <button 
+                    type="button"
+                    onClick={() => setLinkSent(false)}
+                    className="mt-4 text-xs font-bold text-stone-400 hover:text-stone-300"
+                  >
+                    Volver a intentar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Email</label>
+                    <input 
+                      type="email" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
+                      placeholder="admin@pancheria.com"
+                      required
+                    />
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full py-4 bg-brand-yellow text-stone-900 font-black rounded-2xl shadow-lg hover:bg-yellow-400 transition-all active:scale-95"
+                  >
+                    Enviar Vínculo
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setShowEmailLink(false)}
+                    className="w-full mt-2 text-xs font-bold text-stone-500 hover:text-stone-300"
+                  >
+                    Volver a Google
+                  </button>
+                </>
+              )}
+            </form>
+          )}
+          
+          {isFirstUser && (
+            <p className="text-[10px] text-stone-500 text-center mt-4 px-4">
+              Al ser el primer usuario, se le asignará el rol de <strong>Propietario</strong> automáticamente.
+            </p>
+          )}
+        </div>
 
         <p className="mt-8 text-center text-[10px] text-stone-500 uppercase font-black tracking-widest">
           Sistema de Gestión Interna
@@ -270,7 +342,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
         <div className="p-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-brand-yellow rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-brand-yellow/20">
-              <Store size={24} className="text-stone-900" />
+              <Utensils size={24} className="text-stone-900" />
             </div>
             <div>
               <h2 className="text-white font-bold leading-tight">Panchería POS</h2>
@@ -319,19 +391,26 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
           </button>
           <div className="flex items-center gap-3 mb-4 px-2 pt-2">
             <div className="w-8 h-8 bg-stone-700 rounded-full flex items-center justify-center text-xs font-bold text-white">
-              {user.name.charAt(0)}
+              {activeOperator?.name.charAt(0)}
             </div>
-            <div className="text-xs">
-              <p className="text-white font-medium">{user.name}</p>
-              <p className="text-stone-500 capitalize">{user.role}</p>
+            <div className="text-xs flex-1">
+              <p className="text-white font-medium">{activeOperator?.name}</p>
+              <p className="text-stone-500 capitalize">{activeOperator?.role}</p>
             </div>
+            <button 
+              onClick={() => setActiveOperator(null)}
+              className="p-2 text-stone-500 hover:text-white transition-colors"
+              title="Cambiar Usuario"
+            >
+              <ArrowRightLeft size={16} />
+            </button>
           </div>
           <button 
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-500/10 hover:text-red-500 transition-all"
           >
             <LogOut size={22} />
-            <span>Cerrar Sesión</span>
+            <span>Cerrar Sesión Maestra</span>
           </button>
         </div>
       </div>
@@ -362,6 +441,11 @@ const VentasModule = () => {
   const [confirmingRefund, setConfirmingRefund] = useState<string | null>(null);
   const [showPrintModal, setShowPrintModal] = useState<any | null>(null);
   const [searchHistory, setSearchHistory] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerType, setCustomerType] = useState<'final' | 'client'>('final');
+  const [showUserSwitch, setShowUserSwitch] = useState(false);
+  const [selectedSwitchUser, setSelectedSwitchUser] = useState<User | null>(null);
+  const { allUsers, setUser: setGlobalUser } = useApp();
 
 
   const formatDate = (date: any) => {
@@ -650,6 +734,11 @@ const VentasModule = () => {
   // Top 12 logic: for now just first 12 if no search, otherwise filtered
   const displayProducts = search ? filteredProducts : availableProducts.slice(0, 12);
 
+  const getCartItemKey = (item: CartItem | Product, selections?: { [key: string]: string }) => {
+    const s = selections || (item as CartItem).selections || {};
+    return `${item.id}-${JSON.stringify(s)}`;
+  };
+
   const addToCart = (product: Product, selections?: { [key: string]: string }) => {
     // Check if it has category components that need selection
     if (product.is_composite && product.components && !selections) {
@@ -660,14 +749,13 @@ const VentasModule = () => {
       }
     }
 
+    const itemKey = getCartItemKey(product, selections);
+
     setCart(prev => {
-      const existing = prev.find(item => 
-        item.id === product.id && 
-        JSON.stringify(item.selections) === JSON.stringify(selections)
-      );
+      const existing = prev.find(item => getCartItemKey(item) === itemKey);
       if (existing) {
         return prev.map(item => 
-          (item.id === product.id && JSON.stringify(item.selections) === JSON.stringify(selections)) 
+          getCartItemKey(item) === itemKey
             ? { ...item, quantity: item.quantity + 1 } 
             : item
         );
@@ -694,13 +782,13 @@ const VentasModule = () => {
     }
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id));
+  const removeFromCart = (itemKey: string) => {
+    setCart(prev => prev.filter(item => getCartItemKey(item) !== itemKey));
   };
 
-  const updateQuantity = (id: string, delta: number) => {
+  const updateQuantity = (itemKey: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.id === id) {
+      if (getCartItemKey(item) === itemKey) {
         const newQty = Math.max(1, item.quantity + delta);
         return { ...item, quantity: newQty };
       }
@@ -708,7 +796,7 @@ const VentasModule = () => {
     }));
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const subtotal = calcularTotal(cart);
   const total = subtotal;
 
   // Caja Summary Calculations
@@ -737,8 +825,125 @@ const VentasModule = () => {
     );
   });
 
+  const handleSwitchUser = (u: User) => {
+    if (!u.pin) {
+      setGlobalUser(u);
+      setShowUserSwitch(false);
+      return;
+    }
+    setSelectedSwitchUser(u);
+    setPinInput('');
+  };
+
+  const verifyPin = () => {
+    if (selectedSwitchUser && selectedSwitchUser.pin === pinInput) {
+      setGlobalUser(selectedSwitchUser);
+      setShowUserSwitch(false);
+      setSelectedSwitchUser(null);
+      setPinInput('');
+    } else {
+      alert('PIN incorrecto');
+      setPinInput('');
+    }
+  };
+
   return (
     <div className="flex h-full bg-stone-100 overflow-hidden tablet-landscape-pos">
+      {/* User Switch Modal */}
+      <AnimatePresence>
+        {showUserSwitch && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-8"
+            >
+              {!selectedSwitchUser ? (
+                <>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-black text-stone-900">Cambiar Usuario</h2>
+                    <button onClick={() => setShowUserSwitch(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                      <X size={24} className="text-stone-400" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {allUsers.map(u => (
+                      <button
+                        key={u.id}
+                        onClick={() => handleSwitchUser(u)}
+                        className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 ${
+                          user?.id === u.id ? 'border-brand-red bg-red-50' : 'border-stone-100 hover:border-stone-200'
+                        }`}
+                      >
+                        <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center text-stone-400 font-bold text-lg">
+                          {u.name.charAt(0)}
+                        </div>
+                        <div className="text-center">
+                          <p className="font-bold text-stone-900 text-sm">{u.name}</p>
+                          <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{u.role}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center space-y-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setSelectedSwitchUser(null)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                      <ChevronRight size={24} className="text-stone-400 rotate-180" />
+                    </button>
+                    <h2 className="text-2xl font-black text-stone-900">Ingresar PIN</h2>
+                    <div className="w-10" />
+                  </div>
+                  <p className="text-stone-500 font-bold">Hola, {selectedSwitchUser.name}</p>
+                  
+                  <div className="flex justify-center gap-3">
+                    {[0, 1, 2, 3, 4, 5].map(i => (
+                      <div 
+                        key={i} 
+                        className={`w-4 h-4 rounded-full border-2 ${
+                          pinInput.length > i ? 'bg-brand-red border-brand-red' : 'border-stone-200'
+                        }`} 
+                      />
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 max-w-[240px] mx-auto">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                      <button
+                        key={num}
+                        onClick={() => pinInput.length < 6 && setPinInput(prev => prev + num)}
+                        className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xl text-stone-700 transition-all active:scale-90"
+                      >
+                        {num}
+                      </button>
+                    ))}
+                    <button onClick={() => setPinInput('')} className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xs text-stone-400 uppercase">Cerrar</button>
+                    <button
+                      onClick={() => pinInput.length < 6 && setPinInput(prev => prev + '0')}
+                      className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xl text-stone-700 transition-all active:scale-90"
+                    >
+                      0
+                    </button>
+                    <button onClick={() => setPinInput(prev => prev.slice(0, -1))} className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-stone-400 flex items-center justify-center">
+                      <RotateCcw size={20} />
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={verifyPin}
+                    disabled={pinInput.length < 4}
+                    className="w-full py-4 bg-brand-red text-white font-black rounded-2xl shadow-lg shadow-brand-red/20 disabled:opacity-50 disabled:shadow-none transition-all mt-4"
+                  >
+                    Confirmar
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {/* Selection Modal for Composite Products */}
       <AnimatePresence>
         {selectingForProduct && (
@@ -795,7 +1000,19 @@ const VentasModule = () => {
       {/* Products Area */}
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Ventas</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Ventas</h1>
+            <button 
+              onClick={() => setShowUserSwitch(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-stone-100 shadow-sm hover:bg-stone-50 transition-all"
+            >
+              <div className="w-6 h-6 bg-stone-100 rounded-lg flex items-center justify-center text-stone-400 font-bold text-[10px]">
+                {user?.name.charAt(0)}
+              </div>
+              <span className="text-xs font-bold text-stone-600">{user?.name}</span>
+              <ArrowRightLeft size={14} className="text-stone-400" />
+            </button>
+          </div>
           <div className="flex items-center bg-white p-1 rounded-2xl border border-stone-100 shadow-sm">
             <button 
               onClick={() => { setShowCaja(false); setShowHistory(false); }}
@@ -1074,9 +1291,6 @@ const VentasModule = () => {
                   <h3 className="font-bold text-stone-800 text-[10px] line-clamp-1 mb-0.5 leading-tight">{product.name}</h3>
                   <div className="mt-auto flex items-center justify-between">
                     <span className="text-xs font-black text-brand-red">${product.price}</span>
-                    <div className="w-5 h-5 bg-brand-yellow text-stone-900 rounded-full flex items-center justify-center shadow-sm">
-                      <Plus size={12} />
-                    </div>
                   </div>
                 </motion.button>
               ))}
@@ -1134,51 +1348,113 @@ const VentasModule = () => {
               </span>
             </div>
             
-            <div className="relative">
-              <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
-              <select 
-                className="w-full pl-9 pr-4 py-2 bg-stone-50 rounded-xl border-none text-xs focus:ring-2 focus:ring-brand-red font-bold"
-                value={selectedCustomer?.id || ''}
-                onChange={e => {
-                  const c = customers.find(c => c.id === e.target.value);
-                  setSelectedCustomer(c || null);
-                }}
-              >
-                <option value="">Consumidor Final</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    setCustomerType('final');
+                    setSelectedCustomer(null);
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    customerType === 'final' ? 'bg-brand-red text-white' : 'bg-stone-100 text-stone-500'
+                  }`}
+                >
+                  Consumidor Final
+                </button>
+                <button 
+                  onClick={() => setCustomerType('client')}
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    customerType === 'client' ? 'bg-brand-red text-white' : 'bg-stone-100 text-stone-500'
+                  }`}
+                >
+                  Cliente
+                </button>
+              </div>
+
+              {customerType === 'client' && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={14} />
+                  <input 
+                    type="text"
+                    placeholder="Buscar por nombre o DNI..."
+                    className="w-full pl-9 pr-4 py-2 bg-stone-50 rounded-xl border-none text-xs focus:ring-2 focus:ring-brand-red font-bold"
+                    value={customerSearch}
+                    onChange={e => setCustomerSearch(e.target.value)}
+                  />
+                  {customerSearch && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-stone-100 rounded-xl shadow-xl z-10 max-h-40 overflow-y-auto mt-1 noscrollbar">
+                      {customers
+                        .filter(c => 
+                          `${c.first_name} ${c.last_name}`.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                          (c.dni || '').includes(customerSearch)
+                        )
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedCustomer(c);
+                              setCustomerSearch('');
+                            }}
+                            className="w-full text-left px-4 py-2 hover:bg-stone-50 text-xs font-bold border-b border-stone-50 last:border-none"
+                          >
+                            <p className="text-stone-800">{c.first_name} {c.last_name}</p>
+                            <p className="text-[10px] text-stone-400">DNI: {c.dni || 'N/A'}</p>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedCustomer && (
+                <div className="flex items-center justify-between bg-brand-yellow/10 p-2 rounded-xl border border-brand-yellow/20">
+                  <div className="flex items-center gap-2">
+                    <UserCircle size={14} className="text-brand-red" />
+                    <span className="text-[10px] font-black text-stone-800 uppercase">{selectedCustomer.first_name} {selectedCustomer.last_name}</span>
+                  </div>
+                  <button onClick={() => setSelectedCustomer(null)} className="text-stone-400 hover:text-brand-red">
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3 noscrollbar">
             <AnimatePresence>
-              {cart.map(item => (
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  key={item.id}
-                  className="flex items-center gap-3 group"
-                >
-                  <div className="flex-1">
-                    <h4 className="font-bold text-stone-800 text-xs line-clamp-1">{item.name}</h4>
-                    <p className="text-[10px] text-stone-400">${item.price} c/u</p>
-                  </div>
-                  <div className="flex items-center bg-stone-100 rounded-lg p-0.5">
-                    <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-brand-red"><Minus size={12} /></button>
-                    <span className="w-6 text-center text-xs font-black">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-brand-red"><Plus size={12} /></button>
-                  </div>
-                  <div className="text-right min-w-[50px]">
-                    <p className="font-black text-stone-800 text-xs">${item.price * item.quantity}</p>
-                  </div>
-                  <button onClick={() => removeFromCart(item.id)} className="text-stone-300 hover:text-red-500 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </motion.div>
-              ))}
+              {cart.map(item => {
+                const itemKey = getCartItemKey(item);
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    key={itemKey}
+                    className="flex items-center gap-3 group"
+                  >
+                    <div className="flex-1">
+                      <h4 className="font-bold text-stone-800 text-xs line-clamp-1">{item.name}</h4>
+                      {item.selections && Object.entries(item.selections).length > 0 && (
+                        <p className="text-[8px] text-brand-red font-bold uppercase tracking-tighter">
+                          {Object.values(item.selections).map(id => products.find(p => p.id === id)?.name).join(' + ')}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-stone-400">${item.price} c/u</p>
+                    </div>
+                    <div className="flex items-center bg-stone-100 rounded-lg p-0.5">
+                      <button onClick={() => updateQuantity(itemKey, -1)} className="p-1 hover:text-brand-red"><Minus size={12} /></button>
+                      <span className="w-6 text-center text-xs font-black">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(itemKey, 1)} className="p-1 hover:text-brand-red"><Plus size={12} /></button>
+                    </div>
+                    <div className="text-right min-w-[50px]">
+                      <p className="font-black text-stone-800 text-xs">${item.price * item.quantity}</p>
+                    </div>
+                    <button onClick={() => removeFromCart(itemKey)} className="text-stone-300 hover:text-red-500 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
             {cart.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center text-stone-300 py-10">
@@ -1326,58 +1602,22 @@ const VentasModule = () => {
                 </div>
                 <h2 className="text-4xl font-black mb-2 text-stone-900">¡Venta Exitosa!</h2>
                 <p className="text-stone-500 mb-8 text-lg font-bold">Ticket #{showPrintModal.id.slice(-6).toUpperCase()}</p>
-                <p className="text-stone-500 mb-10 text-lg">¿Qué deseas imprimir para esta venta?</p>
                 
-                <div className="grid grid-cols-2 gap-6 mb-10">
-                  <button
-                    onClick={() => alert(`Imprimiendo Ticket en ${printerSettings.name} (${printerSettings.ip})...`)}
-                    className={`flex flex-col items-center gap-4 p-8 rounded-[32px] transition-all group border border-stone-100 ${
-                      ticketSettings.printTicket 
-                        ? 'bg-brand-red text-white shadow-lg' 
-                        : 'bg-stone-50 text-stone-400 opacity-50'
-                    }`}
-                  >
-                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm ${
-                      ticketSettings.printTicket ? 'bg-white/20' : 'bg-white'
-                    }`}>
-                      <Printer size={32} />
-                    </div>
-                    <span className="font-black text-lg uppercase tracking-wider">Ticket Cliente</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => alert(`Imprimiendo Comanda en ${printerSettings.name} (${printerSettings.ip})...`)}
-                    className={`flex flex-col items-center gap-4 p-8 rounded-[32px] transition-all group border border-stone-100 ${
-                      ticketSettings.printComanda 
-                        ? 'bg-stone-900 text-white shadow-lg' 
-                        : 'bg-stone-50 text-stone-400 opacity-50'
-                    }`}
-                  >
-                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm ${
-                      ticketSettings.printComanda ? 'bg-white/20' : 'bg-white'
-                    }`}>
-                      <Utensils size={32} />
-                    </div>
-                    <span className="font-black text-lg uppercase tracking-wider">Comanda Cocina</span>
-                  </button>
-                </div>
-
-                <div className="flex gap-4">
+                <div className="flex flex-col gap-4">
                   <button
                     onClick={() => {
-                      if (ticketSettings.printTicket) alert(`Imprimiendo Ticket...`);
-                      if (ticketSettings.printComanda) alert(`Imprimiendo Comanda...`);
+                      alert(`Imprimiendo Ticket y Comanda...`);
                       setShowPrintModal(null);
                     }}
-                    className="flex-[2] py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
+                    className="w-full py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
                   >
-                    Confirmar e Imprimir
+                    IMPRIMIR Y FINALIZAR
                   </button>
                   <button
                     onClick={() => setShowPrintModal(null)}
-                    className="flex-1 py-5 bg-stone-100 text-stone-500 font-black rounded-2xl hover:bg-stone-200 transition-all uppercase tracking-widest text-sm"
+                    className="w-full py-5 bg-stone-100 text-stone-500 font-black rounded-2xl hover:bg-stone-200 transition-all uppercase tracking-widest text-sm"
                   >
-                    Finalizar
+                    FINALIZAR
                   </button>
                 </div>
               </div>
@@ -2192,44 +2432,65 @@ const Customers = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
-        {customers.map(c => (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            key={c.id}
-            className="bg-white p-3 rounded-2xl shadow-sm border border-stone-100 flex items-start gap-3"
-          >
-            <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-400 shrink-0">
-              <UserCircle size={24} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-stone-800 text-xs truncate">{c.first_name} {c.last_name}</h3>
-              <p className="text-[9px] text-stone-400 mb-1.5">DNI: {c.dni || 'N/A'}</p>
-              <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                <span className="bg-brand-yellow/20 text-brand-red px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider">
-                  {c.points} Puntos
-                </span>
-                <span className="bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider">
-                  {c.phone || 'Sin tel.'}
-                </span>
-              </div>
-              <div className="flex gap-1.5">
-                <button className="flex-1 py-1 bg-stone-50 hover:bg-stone-100 rounded-lg text-[8px] font-black text-stone-600 transition-all flex items-center justify-center gap-1 uppercase tracking-wider">
-                  <Edit size={10} /> Editar
-                </button>
-                <a 
-                  href={`https://wa.me/${c.phone}`} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="flex-1 py-1 bg-green-50 hover:bg-green-100 rounded-lg text-[8px] font-black text-green-600 transition-all flex items-center justify-center gap-1 uppercase tracking-wider"
+      <div className="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-stone-50 border-b border-stone-100">
+                <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Cliente</th>
+                <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">DNI</th>
+                <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Puntos</th>
+                <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Teléfono</th>
+                <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-50">
+              {customers.map(c => (
+                <motion.tr
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  key={c.id}
+                  className="hover:bg-stone-50/50 transition-colors"
                 >
-                  <MessageCircle size={10} /> WhatsApp
-                </a>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-stone-100 rounded-lg flex items-center justify-center text-stone-400 shrink-0">
+                        <UserCircle size={18} />
+                      </div>
+                      <span className="font-bold text-stone-800 text-sm">{c.first_name} {c.last_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-xs font-bold text-stone-500">
+                    {c.dni || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="bg-brand-yellow/20 text-brand-red px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                      {c.points} Puntos
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-xs font-bold text-stone-500">
+                    {c.phone || 'Sin tel.'}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="p-2 bg-stone-50 hover:bg-stone-100 rounded-xl text-stone-600 transition-all">
+                        <Edit size={14} />
+                      </button>
+                      <a 
+                        href={`https://wa.me/${c.phone}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="p-2 bg-green-50 hover:bg-green-100 rounded-xl text-green-600 transition-all"
+                      >
+                        <MessageCircle size={14} />
+                      </a>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -2274,6 +2535,7 @@ const Customers = () => {
 
 const Dashboard = () => {
   const [stats, setStats] = useState<any>(null);
+  const [activeReport, setActiveReport] = useState('summary');
   const { user } = useApp();
 
   useEffect(() => {
@@ -2287,26 +2549,55 @@ const Dashboard = () => {
       where('created_at', '>=', Timestamp.fromDate(today))
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      // Filter by branch_id in memory to avoid composite index requirement
+    const unsub = onSnapshot(q, async (snapshot) => {
       const sales = snapshot.docs
-        .map(doc => doc.data() as any)
+        .map(doc => ({ id: doc.id, ...doc.data() } as any))
         .filter(s => s.branch_id === user.branch_id);
         
       const todaySales = sales.reduce((acc, s) => acc + (s.status === 'completed' ? s.total : 0), 0);
       
-      // Top products calculation (simplified for frontend)
-      const productCounts: any = {};
-      sales.forEach(s => {
-        // Note: items are in a subcollection, so we'd need more queries for full stats
-        // For now, let's just show today's total
-      });
+      // Fetch items for each sale to get product stats
+      const productsMap: any = {};
+      const employeeMap: any = {};
+      const paymentMap: any = {};
+      let totalDiscounts = 0;
+      let totalTaxes = 0;
+
+      for (const sale of sales) {
+        if (sale.status !== 'completed') continue;
+
+        // Payments
+        paymentMap[sale.payment_type] = (paymentMap[sale.payment_type] || 0) + sale.total;
+        // Discounts/Taxes
+        totalDiscounts += (sale.discount || 0);
+        totalTaxes += (sale.tax || 0);
+        // Employees
+        if (sale.seller_name) {
+          employeeMap[sale.seller_name] = (employeeMap[sale.seller_name] || 0) + sale.total;
+        }
+
+        // Items subcollection
+        const itemsSnap = await getDocs(collection(db, `sales/${sale.id}/items`));
+        itemsSnap.docs.forEach(itemDoc => {
+          const item = itemDoc.data();
+          productsMap[item.name] = (productsMap[item.name] || 0) + item.quantity;
+        });
+      }
+
+      const topProducts = Object.entries(productsMap)
+        .map(([name, sold]: any) => ({ name, sold }))
+        .sort((a: any, b: any) => b.sold - a.sold)
+        .slice(0, 12);
 
       setStats({
         todaySales,
         todayCount: sales.length,
-        topProducts: [], // Would need subcollection queries
-        salesByPayment: [] // Would need aggregation
+        topProducts,
+        salesByEmployee: Object.entries(employeeMap).map(([name, total]) => ({ name, total })),
+        salesByPayment: Object.entries(paymentMap).map(([type, total]) => ({ type, total })),
+        totalDiscounts,
+        totalTaxes,
+        rawSales: sales
       });
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
@@ -2319,88 +2610,221 @@ const Dashboard = () => {
     </div>
   );
 
+  const reports = [
+    { id: 'summary', label: 'Resumen de Venta', icon: LayoutDashboard },
+    { id: 'top_sales', label: 'Top 12 de Ventas', icon: TrendingUp },
+    { id: 'by_product', label: 'Venta por Artículo', icon: Package },
+    { id: 'by_employee', label: 'Venta por Empleado', icon: UserCircle },
+    { id: 'receipts', label: 'Recibos', icon: History },
+    { id: 'by_payment', label: 'Ventas por Tipo de Pago', icon: Banknote },
+    { id: 'discounts', label: 'Descuentos', icon: Tag },
+    { id: 'taxes', label: 'Impuesto', icon: CreditCard },
+    { id: 'cash', label: 'Caja', icon: Store },
+  ];
+
   return (
-    <div className="p-3 lg:p-4 space-y-3 lg:space-y-4 overflow-y-auto h-full noscrollbar">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl lg:text-2xl font-black text-stone-900 uppercase tracking-tight">Dashboard</h1>
-          <p className="text-[10px] lg:text-xs text-stone-500 font-medium">Resumen general del negocio</p>
+    <div className="flex h-full bg-stone-50 overflow-hidden">
+      {/* Reports Sidebar */}
+      <div className="w-64 bg-white border-r border-stone-200 flex flex-col">
+        <div className="p-6 border-b border-stone-100">
+          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">Estadísticas</h2>
+          <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest mt-1">Reportes del Negocio</p>
         </div>
-        <div className="flex gap-2">
-          <button className="bg-white px-2 py-1 rounded-lg border border-stone-200 text-[10px] font-bold flex items-center gap-1.5 uppercase tracking-wider">
-            <Clock size={14} />
-            7 días
-          </button>
-          <button className="bg-brand-red text-white px-3 py-1.5 rounded-lg font-black text-[10px] shadow-lg shadow-brand-red/20 uppercase tracking-widest">
-            Reporte
-          </button>
+        <div className="flex-1 overflow-y-auto p-3 space-y-1 noscrollbar">
+          {reports.map(report => (
+            <button
+              key={report.id}
+              onClick={() => setActiveReport(report.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold ${
+                activeReport === report.id 
+                  ? 'bg-brand-red text-white shadow-lg shadow-brand-red/20' 
+                  : 'text-stone-500 hover:bg-stone-50 hover:text-stone-900'
+              }`}
+            >
+              <report.icon size={18} />
+              <span>{report.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        {[
-          { label: 'Ventas Hoy', value: `$${stats.todaySales}`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100' },
-          { label: 'Pedidos', value: stats.todayCount, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-100' },
-          { label: 'Clientes', value: '12', icon: Users, color: 'text-purple-600', bg: 'bg-purple-100' },
-          { label: 'Ticket Prom.', value: `$${stats.todayCount > 0 ? Math.round(stats.todaySales / stats.todayCount) : 0}`, icon: Banknote, color: 'text-brand-red', bg: 'bg-brand-yellow/20' },
-        ].map((stat, i) => (
+      {/* Report Content */}
+      <div className="flex-1 overflow-y-auto p-8 noscrollbar">
+        <AnimatePresence mode="wait">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            key={activeReport}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            key={stat.label}
-            className="bg-white p-3 lg:p-4 rounded-2xl shadow-sm border border-stone-100"
+            exit={{ opacity: 0, y: -10 }}
+            className="max-w-4xl mx-auto"
           >
-            <div className={`w-8 h-8 lg:w-10 lg:h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-2`}>
-              <stat.icon size={16} />
-            </div>
-            <p className="text-[8px] lg:text-[9px] text-stone-500 font-black uppercase tracking-wider">{stat.label}</p>
-            <h3 className="text-base lg:text-xl font-black text-stone-900 mt-0.5">{stat.value}</h3>
+            {activeReport === 'summary' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-8">
+                  <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Resumen de Venta</h1>
+                  <div className="flex gap-2">
+                    <button className="bg-white px-4 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-600">Hoy</button>
+                    <button className="bg-white px-4 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-600">7 días</button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Ventas Totales</p>
+                    <h3 className="text-3xl font-black text-stone-900">${stats.todaySales || 0}</h3>
+                    <div className="mt-4 flex items-center gap-2 text-green-500 text-xs font-bold">
+                      <TrendingUp size={14} />
+                      <span>+12% vs ayer</span>
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Transacciones</p>
+                    <h3 className="text-3xl font-black text-stone-900">{stats.todayCount || 0}</h3>
+                    <div className="mt-4 flex items-center gap-2 text-blue-500 text-xs font-bold">
+                      <ShoppingCart size={14} />
+                      <span>Prom. $850</span>
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Clientes Nuevos</p>
+                    <h3 className="text-3xl font-black text-stone-900">4</h3>
+                    <div className="mt-4 flex items-center gap-2 text-purple-500 text-xs font-bold">
+                      <Users size={14} />
+                      <span>+2 hoy</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeReport === 'top_sales' && (
+              <div className="space-y-6">
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Top 12 de Ventas</h1>
+                <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-stone-50 border-b border-stone-100">
+                        <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Ranking</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Producto</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Ventas</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest text-right">Total (Est.)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-50">
+                      {(stats.topProducts || []).map((p: any, i: number) => (
+                        <tr key={p.name} className="hover:bg-stone-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black ${
+                              i < 3 ? 'bg-brand-yellow text-stone-900' : 'bg-stone-100 text-stone-400'
+                            }`}>
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-stone-800 text-sm">{p.name}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-stone-500">{p.sold} unidades</td>
+                          <td className="px-6 py-4 text-right font-black text-stone-900">
+                            ${(p.total || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                      {(stats.topProducts || []).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-12 text-center text-stone-400 font-bold">Sin datos de ventas hoy</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeReport === 'by_employee' && (
+              <div className="space-y-6">
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Venta por Empleado</h1>
+                <div className="grid grid-cols-1 gap-4">
+                  {(stats.salesByEmployee || []).map((e: any) => (
+                    <div key={e.name} className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center text-stone-400">
+                          <UserCircle size={24} />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-stone-900 uppercase tracking-tight">{e.name}</h3>
+                          <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">Vendedor</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Total Vendido</p>
+                        <h3 className="text-2xl font-black text-stone-900">${e.total}</h3>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeReport === 'by_payment' && (
+              <div className="space-y-6">
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Ventas por Tipo de Pago</h1>
+                <div className="grid grid-cols-1 gap-4">
+                  {(stats.salesByPayment || []).map((p: any) => (
+                    <div key={p.type} className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center text-stone-400">
+                          {p.type === 'Efectivo' ? <Banknote size={24} /> : <CreditCard size={24} />}
+                        </div>
+                        <div>
+                          <h3 className="font-black text-stone-900 uppercase tracking-tight">{p.type}</h3>
+                          <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">Método de Pago</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Total Recaudado</p>
+                        <h3 className="text-2xl font-black text-stone-900">${p.total}</h3>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeReport === 'cash' && (
+              <div className="space-y-6">
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Caja</h1>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Efectivo en Caja</p>
+                    <h3 className="text-4xl font-black text-stone-900">
+                      ${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}
+                    </h3>
+                    <div className="mt-6 pt-6 border-t border-stone-50 flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-500">Fondo Inicial: $5.000</span>
+                      <span className="text-xs font-bold text-green-500">Ventas: +${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}</span>
+                    </div>
+                  </div>
+                  <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Otros Medios</p>
+                    <h3 className="text-4xl font-black text-stone-900">
+                      ${(stats.salesByPayment || []).filter((p: any) => p.type !== 'Efectivo').reduce((acc: number, p: any) => acc + p.total, 0)}
+                    </h3>
+                    <div className="mt-6 pt-6 border-t border-stone-50 flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-500">Tarjetas/Transferencias</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {['by_product', 'receipts', 'discounts', 'taxes'].includes(activeReport) && (
+              <div className="flex flex-col items-center justify-center py-20 text-stone-300">
+                <div className="w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-4">
+                  <LayoutDashboard size={40} />
+                </div>
+                <h2 className="text-xl font-black text-stone-400 uppercase tracking-widest">Reporte en Desarrollo</h2>
+                <p className="text-sm font-medium mt-2">Estamos procesando los datos para esta sección.</p>
+              </div>
+            )}
           </motion.div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-stone-100">
-          <h3 className="text-lg font-bold mb-4">Productos más vendidos</h3>
-          <div className="space-y-4">
-            {stats.topProducts.map((p: any, i: number) => (
-              <div key={p.name} className="flex items-center gap-3">
-                <span className="w-6 h-6 bg-stone-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-stone-500">
-                  {i + 1}
-                </span>
-                <div className="flex-1">
-                  <p className="font-bold text-stone-800 text-xs">{p.name}</p>
-                  <div className="w-full h-1.5 bg-stone-100 rounded-full mt-1.5 overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(p.sold / (stats.topProducts[0]?.sold || 1)) * 100}%` }}
-                      className="h-full bg-brand-red"
-                    />
-                  </div>
-                </div>
-                <span className="font-bold text-stone-500 text-[10px]">{p.sold} u.</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-stone-100">
-          <h3 className="text-lg font-bold mb-4">Ventas por Método de Pago</h3>
-          <div className="space-y-3">
-            {stats.salesByPayment.map((p: any) => (
-              <div key={p.payment_type} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                    {p.payment_type === 'Efectivo' ? <Banknote size={16} className="text-green-600" /> : <CreditCard size={16} className="text-blue-600" />}
-                  </div>
-                  <span className="font-bold text-stone-800 text-xs">{p.payment_type}</span>
-                </div>
-                <span className="font-black text-stone-900 text-sm">${p.total}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -2444,20 +2868,45 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const data = Object.fromEntries(formData.entries());
+    const pin = formData.get('pin') as string;
 
     try {
       const branchName = branches.find(b => b.id === data.branch_id)?.name || 'Sucursal';
+      const email = data.email as string;
+      const userId = email || `pin_${Date.now()}`;
+      
       if (editingUser) {
-        await updateDoc(doc(db, 'users', editingUser.id), {
-          ...data,
+        const updateData: any = {
+          name: data.name,
+          role: data.role,
+          branch_id: data.branch_id,
           branch_name: branchName
-        });
+        };
+        
+        if (email) updateData.email = email;
+        
+        // Only update PIN if a new one was entered
+        if (pin && pin.length >= 4) {
+          updateData.pin = await bcrypt.hash(pin, 10);
+        }
+        
+        await updateDoc(doc(db, 'users', editingUser.id), updateData);
         setEditingUser(null);
       } else {
-        await setDoc(doc(db, 'users', data.email as string), {
+        let hashedPin = '';
+        if (pin && pin.length >= 4) {
+          hashedPin = await bcrypt.hash(pin, 10);
+        }
+        
+        const newUser: any = {
           ...data,
+          id: userId,
+          pin: hashedPin,
           branch_name: branchName
-        });
+        };
+        if (!email) delete newUser.email;
+
+        await setDoc(doc(db, 'users', userId), newUser);
       }
       setShowAdd(false);
     } catch (err) {
@@ -2498,15 +2947,29 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
     setShowShifts(true);
   };
 
-  const filteredShifts = userShifts.filter(s => {
-    const start = new Date(s.start_time).toISOString().split('T')[0];
-    return start >= startDate && start <= endDate;
+  const filteredShifts = (userShifts || []).filter(s => {
+    if (!s.start_time) return false;
+    try {
+      const date = s.start_time.toDate ? s.start_time.toDate() : new Date(s.start_time);
+      const start = date.toISOString().split('T')[0];
+      return start >= startDate && start <= endDate;
+    } catch (e) {
+      console.error("Error parsing shift date:", e);
+      return false;
+    }
   });
 
   const totalHours = filteredShifts.reduce((acc, s) => {
-    if (!s.end_time) return acc;
-    const diff = new Date(s.end_time).getTime() - new Date(s.start_time).getTime();
-    return acc + (diff / (1000 * 60 * 60));
+    if (!s.end_time || !s.start_time) return acc;
+    try {
+      const startDateObj = s.start_time.toDate ? s.start_time.toDate() : new Date(s.start_time);
+      const endDateObj = s.end_time.toDate ? s.end_time.toDate() : new Date(s.end_time);
+      const diff = endDateObj.getTime() - startDateObj.getTime();
+      return acc + (diff / (1000 * 60 * 60));
+    } catch (e) {
+      console.error("Error calculating shift hours:", e);
+      return acc;
+    }
   }, 0);
 
   return (
@@ -2604,8 +3067,8 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
                     <input name="name" defaultValue={editingUser?.name} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red" required />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-stone-400 uppercase mb-2">Email (Google)</label>
-                    <input name="email" type="email" defaultValue={editingUser?.email} readOnly={!!editingUser} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red disabled:opacity-50" required />
+                    <label className="block text-xs font-bold text-stone-400 uppercase mb-2">Email (Opcional para PIN)</label>
+                    <input name="email" type="email" defaultValue={editingUser?.email} readOnly={!!editingUser} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red disabled:opacity-50" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -2617,13 +3080,17 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-stone-400 uppercase mb-2">Sucursal</label>
-                      <select name="branch_id" defaultValue={editingUser?.branch_id} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red">
-                        {branches.map(b => (
-                          <option key={b.id} value={b.id}>{b.name}</option>
-                        ))}
-                      </select>
+                      <label className="block text-xs font-bold text-stone-400 uppercase mb-2">PIN (4-6 dígitos)</label>
+                      <input name="pin" type="password" maxLength={6} pattern="\d*" className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red" placeholder={editingUser ? "Dejar vacío para no cambiar" : "1234"} />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-400 uppercase mb-2">Sucursal</label>
+                    <select name="branch_id" defaultValue={editingUser?.branch_id} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red">
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="flex gap-4 mt-8">
@@ -3110,13 +3577,23 @@ const SettingsModule = () => {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [branch, setBranch] = useState<any | null>(null);
   const [shift, setShift] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState('ventas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinAction, setPinAction] = useState<{ type: 'open' | 'close', data: any } | null>(null);
+  const [pinError, setPinError] = useState(false);
   const [showShiftSummary, setShowShiftSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeOperator, setActiveOperator] = useState<User | null>(null);
+  const [showOperatorModal, setShowOperatorModal] = useState(false);
+  const [operatorPinInput, setOperatorPinInput] = useState('');
+  const [operatorPinError, setOperatorPinError] = useState(false);
+  const [selectedUserForPin, setSelectedUserForPin] = useState<User | null>(null);
   const [isFirstUser, setIsFirstUser] = useState(false);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
 
@@ -3154,6 +3631,15 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+        setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+      return () => unsub();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
       const unsub = onSnapshot(collection(db, 'role_permissions'), (snap) => {
         setRolePermissions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RolePermission)));
       }, (err) => handleFirestoreError(err, OperationType.LIST, 'role_permissions'));
@@ -3187,6 +3673,16 @@ export default function App() {
   }, [user?.branch_id]);
 
   useEffect(() => {
+    if (user?.branch_id) {
+      const q = query(collection(db, 'users'), where('branch_id', '==', user.branch_id));
+      const unsub = onSnapshot(q, (snap) => {
+        setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+      return () => unsub();
+    }
+  }, [user?.branch_id]);
+
+  useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser?.email) {
         console.log('Firebase user authenticated:', firebaseUser.email);
@@ -3213,15 +3709,18 @@ export default function App() {
             
             if (allUsersSnap.empty || firebaseUser.email === 'juanzabczuk@gmail.com') {
               console.log('Setting up as first user/owner');
+              const hashedPin = await bcrypt.hash('1234', 10);
               const setupUser: User = {
                 id: firebaseUser.email,
                 name: firebaseUser.displayName || 'Administrador',
                 email: firebaseUser.email,
                 role: 'owner',
                 branch_id: 'default',
-                branch_name: 'Sucursal Inicial'
+                branch_name: 'Sucursal Inicial',
+                pin: hashedPin
               };
               setUser(setupUser);
+              setActiveOperator(setupUser);
               // Save it to firestore if it's the first user
               if (allUsersSnap.empty) {
                 console.log('Saving initial owner document...');
@@ -3290,10 +3789,44 @@ export default function App() {
     return diffMin <= shiftTolerance;
   };
 
+  const performOpenShift = async (initialCash: number, notes: string) => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'shifts'), {
+        user_id: user.id,
+        user_name: user.name,
+        branch_id: user.branch_id,
+        start_time: serverTimestamp(),
+        end_time: null,
+        initial_cash: initialCash,
+        expected_cash: initialCash,
+        notes: notes,
+        status: 'open'
+      });
+      setShowShiftModal(false);
+      setPinAction(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'shifts');
+    }
+  };
+
   const handleOpenShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
+    const formData = new FormData(e.target as HTMLFormElement);
+    const initialCash = parseFloat(formData.get('initial_cash') as string);
+    const notes = (formData.get('notes') as string) || '';
+
+    // If user has a PIN, we must verify it
+    if (user.pin && !pinAction) {
+      setPinAction({ type: 'open', data: { initialCash, notes } });
+      setPinInput('');
+      setPinError(false);
+      setShowPinModal(true);
+      return;
+    }
+
     // Check tolerance if branch has opening time
     const branchSnap = await getDoc(doc(db, 'branches', user.branch_id));
     const branchData = branchSnap.data() as Branch;
@@ -3304,42 +3837,11 @@ export default function App() {
       }
     }
 
-    const formData = new FormData(e.target as HTMLFormElement);
-    const initialCash = parseFloat(formData.get('initial_cash') as string);
-
-    try {
-      await addDoc(collection(db, 'shifts'), {
-        user_id: user.id,
-        branch_id: user.branch_id,
-        start_time: serverTimestamp(),
-        end_time: null,
-        initial_cash: initialCash,
-        expected_cash: initialCash,
-        notes: formData.get('notes') || ''
-      });
-      setShowShiftModal(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'shifts');
-    }
+    await performOpenShift(initialCash, notes);
   };
 
-  const handleCloseShift = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performCloseShift = async (realCash: number, notes: string) => {
     if (!shift || !user) return;
-
-    // Check tolerance if branch has closing time
-    const branchSnap = await getDoc(doc(db, 'branches', user.branch_id));
-    const branchData = branchSnap.data() as Branch;
-    
-    if (branchData?.closing_time && !isWithinTolerance(branchData.closing_time)) {
-      if (!confirm(`Estás cerrando el turno fuera del margen de tolerancia (${shiftTolerance}m). ¿Deseas continuar?`)) {
-        return;
-      }
-    }
-
-    const formData = new FormData(e.target as HTMLFormElement);
-    const realCash = parseFloat(formData.get('real_cash') as string);
-
     try {
       // Fetch all sales and movements for this shift to generate summary
       const salesSnap = await getDocs(query(collection(db, 'sales'), where('shift_id', '==', shift.id)));
@@ -3392,13 +3894,87 @@ export default function App() {
         real_cash: realCash,
         expected_cash: theoreticalCash,
         status: 'closed',
-        notes: formData.get('notes') || ''
+        notes: notes
       });
 
       setShowShiftModal(false);
       setShowShiftSummary(summary);
+      setPinAction(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `shifts/${shift.id}`);
+    }
+  };
+
+  const handleCloseShift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shift || !user) return;
+
+    const formData = new FormData(e.target as HTMLFormElement);
+    const realCash = parseFloat(formData.get('real_cash') as string);
+    const notes = (formData.get('notes') as string) || '';
+
+    // If user has a PIN, we must verify it
+    if (user.pin && !pinAction) {
+      setPinAction({ type: 'close', data: { realCash, notes } });
+      setPinInput('');
+      setPinError(false);
+      setShowPinModal(true);
+      return;
+    }
+
+    // Check tolerance if branch has closing time
+    const branchSnap = await getDoc(doc(db, 'branches', user.branch_id));
+    const branchData = branchSnap.data() as Branch;
+    
+    if (branchData?.closing_time && !isWithinTolerance(branchData.closing_time)) {
+      if (!confirm(`Estás cerrando el turno fuera del margen de tolerancia (${shiftTolerance}m). ¿Deseas continuar?`)) {
+        return;
+      }
+    }
+
+    await performCloseShift(realCash, notes);
+  };
+
+  const verifyPin = async () => {
+    if (!activeOperator || !activeOperator.pin || !pinAction) return;
+    
+    try {
+      const isMatch = await bcrypt.compare(pinInput, activeOperator.pin);
+      
+      if (isMatch) {
+        setShowPinModal(false);
+        if (pinAction.type === 'open') {
+          await performOpenShift(pinAction.data.initialCash, pinAction.data.notes);
+        } else if (pinAction.type === 'close') {
+          await performCloseShift(pinAction.data.realCash, pinAction.data.notes);
+        }
+      } else {
+        setPinError(true);
+        setPinInput('');
+      }
+    } catch (err) {
+      console.error('Error verifying PIN:', err);
+      setPinError(true);
+    }
+  };
+
+  const verifyOperatorPin = async () => {
+    if (!selectedUserForPin) return;
+    
+    try {
+      const isMatch = await bcrypt.compare(operatorPinInput, selectedUserForPin.pin || '');
+      if (isMatch) {
+        setActiveOperator(selectedUserForPin);
+        setSelectedUserForPin(null);
+        setOperatorPinInput('');
+        setOperatorPinError(false);
+      } else {
+        setOperatorPinError(true);
+        setOperatorPinInput('');
+      }
+    } catch (err) {
+      console.error('Error verifying operator PIN:', err);
+      setOperatorPinError(true);
     }
   };
 
@@ -3502,64 +4078,63 @@ export default function App() {
     preload();
   }, [user]);
 
-  const handleEmailLogin = async (email: string, pass: string) => {
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      await signInWithPopup(auth, provider);
     } catch (err: any) {
-      console.error('Login error:', err);
-      if (err.code === 'auth/invalid-credential') {
-        alert('Credenciales inválidas. Si es la primera vez que ingresa, por favor use el enlace de registro.');
+      console.error('Google login error:', err);
+      if (err.code === 'auth/unauthorized-domain') {
+        alert('Este dominio no está autorizado para el inicio de sesión con Google. Por favor, añádalo en la consola de Firebase.');
       } else {
-        alert('Error al iniciar sesión: ' + err.message);
+        alert('Error al iniciar sesión con Google: ' + err.message);
       }
     }
   };
 
-  const handleEmailRegister = async (email: string, pass: string) => {
+  const handleEmailLinkLogin = async (email: string) => {
+    const actionCodeSettings = {
+      // URL you want to redirect back to. The domain (www.example.com) for this
+      // URL must be in the authorized domains list in the Firebase Console.
+      url: window.location.origin,
+      // This must be true.
+      handleCodeInApp: true,
+    };
+
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-      const firebaseUser = userCredential.user;
-      
-      // Create initial owner record
-      const setupUser: User = {
-        id: firebaseUser.email!,
-        name: 'Administrador',
-        email: firebaseUser.email!,
-        role: 'owner',
-        branch_id: 'default',
-        branch_name: 'Sucursal Inicial'
-      };
-      
-      await setDoc(doc(db, 'users', firebaseUser.email!), setupUser);
-
-      // Create initial branch if it doesn't exist
-      await setDoc(doc(db, 'branches', 'default'), {
-        name: 'Sucursal Inicial',
-        created_at: serverTimestamp()
-      }, { merge: true });
-
-      // Create role permissions
-      const roles = [
-        { id: 'owner', modules: ['pos', 'inventory', 'customers', 'stats', 'staff', 'settings'] },
-        { id: 'admin', modules: ['pos', 'inventory', 'customers', 'stats', 'staff', 'settings'] },
-        { id: 'seller', modules: ['pos', 'customers'] }
-      ];
-
-      for (const role of roles) {
-        await setDoc(doc(db, 'role_permissions', role.id), { modules: role.modules });
-      }
-
-      setIsFirstUser(false);
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      // Save the email locally so you don't have to ask the user for it again
+      // if they open the link on the same device.
+      window.localStorage.setItem('emailForSignIn', email);
     } catch (err: any) {
-      console.error('Registration error:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        alert('Este email ya está registrado. Por favor, intente iniciar sesión.');
-        setIsFirstUser(false);
-      } else {
-        alert('Error al registrar: ' + err.message);
-      }
+      console.error('Email link error:', err);
+      alert('Error al enviar el vínculo: ' + err.message);
     }
   };
+
+  useEffect(() => {
+    const handleSignInLink = async () => {
+      if (isSignInWithEmailLink(auth, window.location.href)) {
+        let email = window.localStorage.getItem('emailForSignIn');
+        if (!email) {
+          // User opened the link on a different device. To prevent session fixation
+          // attacks, ask the user to provide the associated email again. For now,
+          // we'll just prompt them.
+          email = window.prompt('Por favor, ingrese su email para confirmar el inicio de sesión:');
+        }
+        if (email) {
+          try {
+            await signInWithEmailLink(auth, email, window.location.href);
+            window.localStorage.removeItem('emailForSignIn');
+          } catch (err: any) {
+            console.error('Sign in with email link error:', err);
+            alert('Error al iniciar sesión con el vínculo: ' + err.message);
+          }
+        }
+      }
+    };
+    handleSignInLink();
+  }, []);
 
   const handleLogout = async () => {
     await auth.signOut();
@@ -3575,8 +4150,8 @@ export default function App() {
   if (!user) {
     return (
       <LoginScreen 
-        onLogin={handleEmailLogin} 
-        onRegister={handleEmailRegister} 
+        onGoogleLogin={handleGoogleLogin} 
+        onEmailLinkLogin={handleEmailLinkLogin}
         isFirstUser={isFirstUser} 
       />
     );
@@ -3585,6 +4160,7 @@ export default function App() {
   return (
     <AppContext.Provider value={{ 
       user, setUser, 
+      allUsers,
       branch, setBranch, 
       shift, setShift, 
       onOpenCloseShift: () => setShowShiftModal(true),
@@ -3629,11 +4205,31 @@ export default function App() {
                 className="h-full"
               >
                 {activeTab === 'ventas' && <VentasModule />}
-                {activeTab === 'inventory' && <Inventory />}
-                {activeTab === 'customers' && <Customers />}
-                {activeTab === 'stats' && <Dashboard />}
-                {activeTab === 'staff' && <Staff rolePermissions={rolePermissions} />}
-                {activeTab === 'settings' && <SettingsModule />}
+                {activeTab === 'inventory' && (
+                  <ErrorBoundary>
+                    <Inventory />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'customers' && (
+                  <ErrorBoundary>
+                    <Customers />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'stats' && (
+                  <ErrorBoundary>
+                    <Dashboard />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'staff' && (
+                  <ErrorBoundary>
+                    <Staff rolePermissions={rolePermissions} />
+                  </ErrorBoundary>
+                )}
+                {activeTab === 'settings' && (
+                  <ErrorBoundary>
+                    <SettingsModule />
+                  </ErrorBoundary>
+                )}
               </motion.div>
             </AnimatePresence>
           </div>
@@ -3691,6 +4287,120 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        {/* Operator Selector Modal */}
+        <AnimatePresence>
+          {(!activeOperator && user) && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900">
+              <div className="w-full max-w-4xl">
+                <div className="text-center mb-12">
+                  <h1 className="text-4xl font-black text-white mb-4 uppercase tracking-tighter">Panchería POS</h1>
+                  <p className="text-stone-400 font-bold uppercase tracking-widest text-sm">Selecciona tu usuario para operar</p>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {(allUsers || []).map(u => (
+                    <motion.button
+                      key={u.id}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setSelectedUserForPin(u)}
+                      className="aspect-square bg-stone-800 rounded-[40px] flex flex-col items-center justify-center p-6 transition-colors hover:bg-brand-red group"
+                    >
+                      <div className="w-20 h-20 bg-stone-700 rounded-full flex items-center justify-center mb-4 group-hover:bg-white/20">
+                        <UserCircle className="w-12 h-12 text-stone-400 group-hover:text-white" />
+                      </div>
+                      <span className="text-white font-black uppercase tracking-tight text-center">{u.name}</span>
+                      <span className="text-stone-500 text-xs font-bold uppercase mt-1 group-hover:text-white/60">{u.role}</span>
+                    </motion.button>
+                  ))}
+                </div>
+
+                <div className="mt-12 text-center">
+                  <button onClick={handleLogout} className="text-stone-500 font-bold uppercase tracking-widest text-xs hover:text-white transition-colors">Cerrar Sesión Maestra</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Operator PIN Modal */}
+        <AnimatePresence>
+          {selectedUserForPin && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedUserForPin(null)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[40px] shadow-2xl p-8 text-center">
+                <div className="w-16 h-16 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Lock className="w-8 h-8 text-brand-red" />
+                </div>
+                <h2 className="text-2xl font-black mb-1 uppercase tracking-tighter">Hola, {selectedUserForPin.name}</h2>
+                <p className="text-stone-500 text-sm mb-6 font-bold uppercase tracking-widest">Ingresa tu PIN</p>
+                
+                <input 
+                  type="password" 
+                  value={operatorPinInput}
+                  onChange={(e) => {
+                    setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setOperatorPinError(false);
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && verifyOperatorPin()}
+                  className={`w-full text-center text-3xl tracking-[1em] font-black py-4 bg-stone-50 rounded-2xl border-2 transition-all ${operatorPinError ? 'border-brand-red bg-brand-red/5' : 'border-transparent focus:border-brand-red'}`}
+                  placeholder="••••"
+                  autoFocus
+                />
+                
+                {operatorPinError && (
+                  <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-brand-red text-xs font-bold uppercase tracking-wider mt-4">PIN Incorrecto</motion.p>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                  <button onClick={() => setSelectedUserForPin(null)} className="py-4 font-bold text-stone-500 hover:bg-stone-100 rounded-2xl transition-colors uppercase text-xs">Atrás</button>
+                  <button onClick={verifyOperatorPin} disabled={operatorPinInput.length < 4} className="py-4 bg-brand-red text-white font-bold rounded-2xl shadow-lg shadow-brand-red/20 disabled:opacity-50 transition-all uppercase text-xs">Entrar</button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        {/* PIN Verification Modal */}
+        <AnimatePresence>
+          {showPinModal && (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPinModal(false)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-xs bg-white rounded-[40px] shadow-2xl overflow-hidden">
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Lock className="w-8 h-8 text-brand-red" />
+                  </div>
+                  <h2 className="text-2xl font-black mb-2">Verificar PIN</h2>
+                  <p className="text-stone-500 text-sm mb-6">Ingresa tu código de seguridad para confirmar {pinAction?.type === 'open' ? 'la apertura' : 'el cierre'} de turno.</p>
+                  
+                  <div className="space-y-4">
+                    <input 
+                      type="password" 
+                      value={pinInput}
+                      onChange={(e) => {
+                        setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        setPinError(false);
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && verifyPin()}
+                      className={`w-full text-center text-3xl tracking-[1em] font-black py-4 bg-stone-50 rounded-2xl border-2 transition-all ${pinError ? 'border-brand-red bg-brand-red/5' : 'border-transparent focus:border-brand-red'}`}
+                      placeholder="••••"
+                      autoFocus
+                    />
+                    
+                    {pinError && (
+                      <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-brand-red text-xs font-bold uppercase tracking-wider">PIN Incorrecto</motion.p>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3 pt-4">
+                      <button onClick={() => setShowPinModal(false)} className="py-4 font-bold text-stone-500 hover:bg-stone-100 rounded-2xl transition-colors">Cancelar</button>
+                      <button onClick={verifyPin} disabled={pinInput.length < 4} className="py-4 bg-brand-red text-white font-bold rounded-2xl shadow-lg shadow-brand-red/20 disabled:opacity-50 transition-all">Verificar</button>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
             </div>
           )}

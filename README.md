@@ -1,20 +1,61 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Panchería POS - Sistema de Punto de Venta
 
-# Run and deploy your AI Studio app
+Sistema de punto de venta moderno construido con React, TypeScript y Firebase.
 
-This contains everything you need to run your app locally.
+**Repositorio:** [juanzabczuk-rgb/https-github.com-pancheria-pos](https://github.com/juanzabczuk-rgb/https-github.com-pancheria-pos.git)
 
-View your app in AI Studio: https://ai.studio/apps/91fa8d22-d72d-4022-b679-686d378d70b5
+## Características
 
-## Run Locally
+- Gestión de Inventario (Productos Simples y Compuestos)
+- Ventas y Facturación
+- Gestión de Clientes y Puntos
+- Control de Caja y Turnos
+- Gestión de Personal y Roles
+- Estadísticas y Reportes
 
-**Prerequisites:**  Node.js
+## Desarrollo Local
 
+1. Instalar dependencias:
+   ```bash
+   npm install
+   ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+2. Iniciar servidor de desarrollo:
+   ```bash
+   npm run dev
+   ```
+
+3. Ejecutar Linter:
+   ```bash
+   npm run lint
+   ```
+
+4. Formatear código:
+   ```bash
+   npm run format
+   ```
+
+## Seguridad y Reglas de Firebase
+
+Las reglas de seguridad de Firestore están configuradas para restringir el acceso basado en roles (owner, admin, seller).
+
+- **Owner/Admin**: Acceso total a todos los módulos.
+- **Seller**: Acceso limitado a POS y Clientes.
+
+## Variables de Entorno
+
+Asegúrese de configurar las variables de entorno necesarias en su proyecto de Firebase.
+
+## Firma de APK y Producción
+
+Para generar una versión de producción para Android:
+
+1. Genere un keystore:
+   ```bash
+   keytool -genkey -v -keystore release.keystore -alias apprelease -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. Configure `android/app/build.gradle` con las credenciales del keystore.
+3. Active ProGuard/R8 para ofuscación y reducción de tamaño.
+
+---
+Desarrollado para ser 100% gratuito utilizando el nivel gratuito de Firebase.
