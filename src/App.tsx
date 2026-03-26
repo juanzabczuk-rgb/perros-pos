@@ -27,7 +27,6 @@ import {
   MinusCircle,
   Tag,
   Check,
-  ArrowRightLeft,
   MessageCircle,
   RotateCcw,
   Menu,
@@ -66,7 +65,8 @@ import {
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendEmailVerification
+  sendEmailVerification,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 
@@ -206,6 +206,22 @@ const LoginScreen = ({ onGoogleLogin, onEmailPasswordLogin, onRegister, isFirstU
     }
   }, []);
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Por favor, ingrese su email para restablecer la contraseña.');
+      return;
+    }
+    try {
+      setLoading(true);
+      await sendPasswordResetEmail(auth, email);
+      alert('Se ha enviado un correo para restablecer su contraseña.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -222,7 +238,20 @@ const LoginScreen = ({ onGoogleLogin, onEmailPasswordLogin, onRegister, isFirstU
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Error en la autenticación');
+      console.error('Login error:', err);
+      if (err.code === 'auth/invalid-credential') {
+        setError('Email o contraseña incorrectos. Por favor, verifica tus datos.');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('No se encontró una cuenta con este email.');
+      } else if (err.code === 'auth/wrong-password') {
+        setError('Contraseña incorrecta.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('Este email ya está registrado.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('La contraseña es muy débil.');
+      } else {
+        setError(err.message || 'Error en la autenticación');
+      }
     } finally {
       setLoading(false);
     }
@@ -262,6 +291,11 @@ const LoginScreen = ({ onGoogleLogin, onEmailPasswordLogin, onRegister, isFirstU
         {error && (
           <div className="mb-4 p-3 bg-red-900/20 border border-red-900/30 rounded-2xl text-red-400 text-xs font-bold text-center">
             {error}
+            {error.includes('incorrectos') && (
+              <p className="mt-1 text-[10px] opacity-70 font-medium">
+                Si acaba de registrarse, asegúrese de haber verificado su email.
+              </p>
+            )}
           </div>
         )}
 
@@ -351,6 +385,17 @@ const LoginScreen = ({ onGoogleLogin, onEmailPasswordLogin, onRegister, isFirstU
               >
                 {loading ? 'Procesando...' : mode === 'register' ? 'Registrarse' : 'Iniciar Sesión'}
               </button>
+              
+              {mode === 'login' && (
+                <button 
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="w-full text-[10px] font-bold text-stone-500 hover:text-stone-300 uppercase tracking-widest"
+                >
+                  ¿Olvidó su contraseña?
+                </button>
+              )}
+
               <button 
                 type="button"
                 onClick={() => setMode('initial')}
@@ -387,7 +432,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
   onClose: () => void,
   rolePermissions: RolePermission[]
 }) => {
-  const { activeOperator, setActiveOperator } = useApp();
+  const { activeOperator } = useApp();
   const userPermissions = rolePermissions.find(rp => rp.id === user.role)?.modules || (user.role === 'owner' ? ['pos', 'inventory', 'customers', 'stats', 'staff', 'settings'] : []);
   
   const menuItems = [
@@ -476,13 +521,6 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
               <p className="text-white font-medium">{activeOperator?.name}</p>
               <p className="text-stone-500 capitalize">{activeOperator?.role}</p>
             </div>
-            <button 
-              onClick={() => setActiveOperator(null)}
-              className="p-2 text-stone-500 hover:text-white transition-colors"
-              title="Cambiar Usuario"
-            >
-              <ArrowRightLeft size={16} />
-            </button>
           </div>
           <button 
             onClick={onLogout}
@@ -522,11 +560,6 @@ const VentasModule = () => {
   const [searchHistory, setSearchHistory] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerType, setCustomerType] = useState<'final' | 'client'>('final');
-  const [showUserSwitch, setShowUserSwitch] = useState(false);
-  const [selectedSwitchUser, setSelectedSwitchUser] = useState<User | null>(null);
-  const [pinInput, setPinInput] = useState('');
-  const { allUsers, setUser: setGlobalUser } = useApp();
-
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
@@ -905,138 +938,8 @@ const VentasModule = () => {
     );
   });
 
-  const handleSwitchUser = (u: User) => {
-    if (!u.pin) {
-      setGlobalUser(u);
-      setShowUserSwitch(false);
-      return;
-    }
-    setSelectedSwitchUser(u);
-    setPinInput('');
-  };
-
-  const verifyPin = async () => {
-    if (selectedSwitchUser) {
-      console.log('Verifying PIN for switch user:', selectedSwitchUser.name);
-      console.log('Stored PIN hash:', selectedSwitchUser.pin);
-      console.log('Entered PIN:', pinInput);
-      try {
-        const isMatch = await bcrypt.compare(pinInput, selectedSwitchUser.pin || '');
-        console.log('PIN Match result:', isMatch);
-        if (isMatch) {
-          setGlobalUser(selectedSwitchUser);
-          setShowUserSwitch(false);
-          setSelectedSwitchUser(null);
-          setPinInput('');
-        } else {
-          alert('PIN incorrecto');
-          setPinInput('');
-        }
-      } catch (error) {
-        console.error("Error verifying PIN:", error);
-        alert("Error al verificar el PIN");
-        setPinInput('');
-      }
-    }
-  };
-
   return (
     <div className="flex h-full bg-stone-100 overflow-hidden tablet-landscape-pos">
-      {/* User Switch Modal */}
-      <AnimatePresence>
-        {showUserSwitch && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-8"
-            >
-              {!selectedSwitchUser ? (
-                <>
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-black text-stone-900">Cambiar Usuario</h2>
-                    <button onClick={() => setShowUserSwitch(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
-                      <X size={24} className="text-stone-400" />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {allUsers.map(u => (
-                      <button
-                        key={u.id}
-                        onClick={() => handleSwitchUser(u)}
-                        className={`p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 ${
-                          user?.id === u.id ? 'border-brand-red bg-red-50' : 'border-stone-100 hover:border-stone-200'
-                        }`}
-                      >
-                        <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center text-stone-400 font-bold text-lg">
-                          {u.name.charAt(0)}
-                        </div>
-                        <div className="text-center">
-                          <p className="font-bold text-stone-900 text-sm">{u.name}</p>
-                          <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">{u.role}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="text-center space-y-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <button onClick={() => setSelectedSwitchUser(null)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
-                      <ChevronRight size={24} className="text-stone-400 rotate-180" />
-                    </button>
-                    <h2 className="text-2xl font-black text-stone-900">Ingresar PIN</h2>
-                    <div className="w-10" />
-                  </div>
-                  <p className="text-stone-500 font-bold">Hola, {selectedSwitchUser.name}</p>
-                  
-                  <div className="flex justify-center gap-3">
-                    {[0, 1, 2, 3, 4, 5].map(i => (
-                      <div 
-                        key={i} 
-                        className={`w-4 h-4 rounded-full border-2 ${
-                          pinInput.length > i ? 'bg-brand-red border-brand-red' : 'border-stone-200'
-                        }`} 
-                      />
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 max-w-[240px] mx-auto">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-                      <button
-                        key={num}
-                        onClick={() => pinInput.length < 6 && setPinInput(prev => prev + num)}
-                        className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xl text-stone-700 transition-all active:scale-90"
-                      >
-                        {num}
-                      </button>
-                    ))}
-                    <button onClick={() => setPinInput('')} className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xs text-stone-400 uppercase">Cerrar</button>
-                    <button
-                      onClick={() => pinInput.length < 6 && setPinInput(prev => prev + '0')}
-                      className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-xl text-stone-700 transition-all active:scale-90"
-                    >
-                      0
-                    </button>
-                    <button onClick={() => setPinInput(prev => prev.slice(0, -1))} className="w-16 h-16 rounded-2xl bg-stone-50 hover:bg-stone-100 font-black text-stone-400 flex items-center justify-center">
-                      <RotateCcw size={20} />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={verifyPin}
-                    disabled={pinInput.length < 4}
-                    className="w-full py-4 bg-brand-red text-white font-black rounded-2xl shadow-lg shadow-brand-red/20 disabled:opacity-50 disabled:shadow-none transition-all mt-4"
-                  >
-                    Confirmar
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
       {/* Selection Modal for Composite Products */}
       <AnimatePresence>
         {selectingForProduct && (
@@ -1095,16 +998,6 @@ const VentasModule = () => {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Ventas</h1>
-            <button 
-              onClick={() => setShowUserSwitch(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-stone-100 shadow-sm hover:bg-stone-50 transition-all"
-            >
-              <div className="w-6 h-6 bg-stone-100 rounded-lg flex items-center justify-center text-stone-400 font-bold text-[10px]">
-                {user?.name.charAt(0)}
-              </div>
-              <span className="text-xs font-bold text-stone-600">{user?.name}</span>
-              <ArrowRightLeft size={14} className="text-stone-400" />
-            </button>
           </div>
           <div className="flex items-center bg-white p-1 rounded-2xl border border-stone-100 shadow-sm">
             <button 
@@ -1170,6 +1063,30 @@ const VentasModule = () => {
           {showCaja ? (
             <div className="max-w-2xl mx-auto bg-white rounded-[40px] shadow-sm border border-stone-100 overflow-hidden">
               <div className="p-8 space-y-8">
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowMovementModal('income')}
+                    className="flex-1 py-3 bg-green-500 text-white font-black rounded-xl shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+                  >
+                    <PlusCircle size={16} />
+                    Ingreso
+                  </button>
+                  <button 
+                    onClick={() => setShowMovementModal('expense')}
+                    className="flex-1 py-3 bg-red-500 text-white font-black rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+                  >
+                    <MinusCircle size={16} />
+                    Egreso
+                  </button>
+                  <button 
+                    onClick={onOpenCloseShift}
+                    className="flex-1 py-3 bg-stone-900 text-white font-black rounded-xl shadow-lg shadow-stone-900/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+                  >
+                    <LogOut size={16} />
+                    Cerrar Turno
+                  </button>
+                </div>
+
                 <div>
                   <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                     <div className="w-1 h-1 bg-brand-red rounded-full" />
@@ -1267,30 +1184,6 @@ const VentasModule = () => {
                       <span className="font-black text-stone-900">$0</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    onClick={() => setShowMovementModal('income')}
-                    className="flex-1 py-3 bg-green-500 text-white font-black rounded-xl shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <PlusCircle size={16} />
-                    Ingreso
-                  </button>
-                  <button 
-                    onClick={() => setShowMovementModal('expense')}
-                    className="flex-1 py-3 bg-red-500 text-white font-black rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <MinusCircle size={16} />
-                    Egreso
-                  </button>
-                  <button 
-                    onClick={onOpenCloseShift}
-                    className="flex-1 py-3 bg-stone-900 text-white font-black rounded-xl shadow-lg shadow-stone-900/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <LogOut size={16} />
-                    Cerrar Turno
-                  </button>
                 </div>
               </div>
             </div>
@@ -1723,27 +1616,12 @@ const VentasModule = () => {
 };
 
 const ShiftSummaryModal = ({ summary, onClose }: { summary: any, onClose: () => void }) => {
-  const { ticketSettings } = useApp();
-
-  useEffect(() => {
-    if (ticketSettings.printShiftClosing) {
-      setTimeout(() => {
-        window.print();
-      }, 500);
-    }
-  }, []);
-
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 print:p-0">
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
         exit={{ opacity: 0 }} 
-        onClick={onClose} 
         className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm print:hidden" 
       />
       <motion.div 
@@ -1762,12 +1640,6 @@ const ShiftSummaryModal = ({ summary, onClose }: { summary: any, onClose: () => 
               <div className="bg-brand-yellow px-4 py-2 rounded-2xl font-black text-stone-900 print:hidden">
                 #{summary.shift_id.slice(-6).toUpperCase()}
               </div>
-              <button 
-                onClick={handlePrint}
-                className="p-3 bg-stone-100 text-stone-900 rounded-xl hover:bg-stone-200 transition-all print:hidden"
-              >
-                <Printer size={20} />
-              </button>
             </div>
           </div>
 
@@ -1878,10 +1750,13 @@ const ShiftSummaryModal = ({ summary, onClose }: { summary: any, onClose: () => 
 
           <div className="mt-8 print:hidden">
             <button 
-              onClick={onClose}
-              className="w-full py-4 bg-stone-900 text-white font-black rounded-2xl shadow-lg shadow-stone-900/20 uppercase tracking-widest"
+              onClick={() => {
+                window.print();
+                onClose();
+              }}
+              className="w-full py-5 bg-brand-red text-white font-black rounded-2xl shadow-xl shadow-brand-red/20 uppercase tracking-widest text-lg"
             >
-              Cerrar y Salir
+              IMPRIMIR Y SALIR
             </button>
           </div>
         </div>
@@ -3690,7 +3565,6 @@ export default function App() {
   const [showShiftSummary, setShowShiftSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeOperator, setActiveOperator] = useState<User | null>(null);
-  const [showOperatorModal, setShowOperatorModal] = useState(false);
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState(false);
   const [selectedUserForPin, setSelectedUserForPin] = useState<User | null>(null);
@@ -3790,8 +3664,6 @@ export default function App() {
         // Check email verification
         if (!firebaseUser.emailVerified && firebaseUser.providerData[0]?.providerId === 'password') {
           console.log('Email not verified');
-          // We don't sign out immediately to allow them to see the message or resend
-          // But we don't set the user state yet
           setLoading(false);
           return;
         }
@@ -3812,10 +3684,23 @@ export default function App() {
             }
           }
 
+          const isHardcodedOwner = firebaseUser.email === 'juanzabczuk@gmail.com' || firebaseUser.email === 'perrosrosarinos@gmail.com';
+
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data() as User;
             userData.id = userDocSnap.id;
             
+            // Check if this is the only user in the system
+            const allUsersSnap = await getDocs(query(collection(db, 'empleados'), limit(2)));
+            const isOnlyUser = allUsersSnap.size === 1 && allUsersSnap.docs[0].id === firebaseUser.uid;
+
+            // Upgrade to owner if hardcoded OR if they are the only user
+            if ((isHardcodedOwner || isOnlyUser) && userData.role !== 'owner') {
+              console.log('Upgrading user to owner role (hardcoded or only user)...');
+              userData.role = 'owner';
+              await updateDoc(doc(db, 'empleados', firebaseUser.uid), { role: 'owner' });
+            }
+
             // Get branch name
             const branchSnap = await getDoc(doc(db, 'branches', userData.branch_id));
             if (branchSnap.exists()) {
@@ -3828,31 +3713,35 @@ export default function App() {
             console.log('User document does not exist yet. Checking if first user...');
             // Check if it's the first user (owner)
             const allUsersSnap = await getDocs(query(collection(db, 'empleados'), limit(1)));
-            console.log('All users snap empty:', allUsersSnap.empty);
             
-            if (allUsersSnap.empty || firebaseUser.email === 'juanzabczuk@gmail.com') {
+            if (allUsersSnap.empty || isHardcodedOwner) {
               console.log('Setting up as first user/owner');
               const hashedPin = await bcrypt.hash('1234', 10);
               const setupUser: User = {
                 id: firebaseUser.uid,
-                name: firebaseUser.displayName || 'Administrador',
+                name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
                 email: firebaseUser.email,
                 role: 'owner',
                 branch_id: 'default',
                 branch_name: 'Sucursal Inicial',
                 pin: hashedPin
               };
+              
+              // Save it to firestore
+              console.log('Saving owner document...');
+              await setDoc(doc(db, 'empleados', firebaseUser.uid), {
+                ...setupUser,
+                created_at: serverTimestamp()
+              });
+              
+              // Ensure default branch exists
+              await setDoc(doc(db, 'branches', 'default'), {
+                name: 'Sucursal Inicial',
+                created_at: serverTimestamp()
+              }, { merge: true });
+
               setUser(setupUser);
               setActiveOperator(setupUser);
-              // Save it to firestore if it's the first user
-              if (allUsersSnap.empty) {
-                console.log('Saving initial owner document...');
-                await setDoc(doc(db, 'empleados', firebaseUser.uid), setupUser);
-                await setDoc(doc(db, 'branches', 'default'), {
-                  name: 'Sucursal Inicial',
-                  created_at: serverTimestamp()
-                }, { merge: true });
-              }
             } else {
               console.log('User not authorized');
               setUser(null);
@@ -3862,9 +3751,6 @@ export default function App() {
           }
         } catch (err: any) {
           console.error('Auth error detail:', err);
-          if (err.code === 'permission-denied') {
-            console.error('Permission denied during auth check.');
-          }
         }
       } else {
         console.log('No firebase user');
@@ -4262,8 +4148,14 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await auth.signOut();
-    setUser(null);
+    try {
+      await signOut(auth);
+      setUser(null);
+      setActiveOperator(null);
+      setShift(null);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   if (loading) return (
