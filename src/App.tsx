@@ -43,6 +43,7 @@ import { calcularTotal } from './utils/ventas';
 import { 
   collection, 
   doc, 
+  addDoc,
   setDoc, 
   updateDoc, 
   deleteDoc, 
@@ -171,6 +172,8 @@ interface AppContextType {
   setTicketSettings: (s: TicketSettings) => void;
   shiftTolerance: number;
   setShiftTolerance: (t: number) => void;
+  activeOperator: User | null;
+  setActiveOperator: (u: User | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -309,6 +312,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
   onClose: () => void,
   rolePermissions: RolePermission[]
 }) => {
+  const { activeOperator, setActiveOperator } = useApp();
   const userPermissions = rolePermissions.find(rp => rp.id === user.role)?.modules || (user.role === 'owner' ? ['pos', 'inventory', 'customers', 'stats', 'staff', 'settings'] : []);
   
   const menuItems = [
@@ -391,7 +395,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout, onOpenCloseShift, ha
           </button>
           <div className="flex items-center gap-3 mb-4 px-2 pt-2">
             <div className="w-8 h-8 bg-stone-700 rounded-full flex items-center justify-center text-xs font-bold text-white">
-              {activeOperator?.name.charAt(0)}
+              {activeOperator?.name?.charAt(0) || '?'}
             </div>
             <div className="text-xs flex-1">
               <p className="text-white font-medium">{activeOperator?.name}</p>
@@ -835,15 +839,18 @@ const VentasModule = () => {
     setPinInput('');
   };
 
-  const verifyPin = () => {
-    if (selectedSwitchUser && selectedSwitchUser.pin === pinInput) {
-      setGlobalUser(selectedSwitchUser);
-      setShowUserSwitch(false);
-      setSelectedSwitchUser(null);
-      setPinInput('');
-    } else {
-      alert('PIN incorrecto');
-      setPinInput('');
+  const verifyPin = async () => {
+    if (selectedSwitchUser) {
+      const isMatch = await bcrypt.compare(pinInput, selectedSwitchUser.pin || '');
+      if (isMatch) {
+        setGlobalUser(selectedSwitchUser);
+        setShowUserSwitch(false);
+        setSelectedSwitchUser(null);
+        setPinInput('');
+      } else {
+        alert('PIN incorrecto');
+        setPinInput('');
+      }
     }
   };
 
@@ -3701,6 +3708,7 @@ export default function App() {
             }
             
             setUser(userData);
+            setActiveOperator(userData);
           } else {
             console.log('User document does not exist yet. Checking if first user...');
             // Check if it's the first user (owner)
@@ -4166,20 +4174,22 @@ export default function App() {
       onOpenCloseShift: () => setShowShiftModal(true),
       printerSettings, setPrinterSettings,
       ticketSettings, setTicketSettings,
-      shiftTolerance, setShiftTolerance
+      shiftTolerance, setShiftTolerance,
+      activeOperator, setActiveOperator
     }}>
-      <div className="flex h-screen bg-stone-100 font-sans text-stone-900 overflow-hidden tablet-landscape-optimized">
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          user={user} 
-          onLogout={handleLogout}
-          onOpenCloseShift={() => setShowShiftModal(true)}
-          hasShift={!!shift}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          rolePermissions={rolePermissions}
-        />
+      <div className="flex h-screen bg-stone-200 font-sans text-stone-900 overflow-hidden items-center justify-center p-0 sm:p-2 md:p-4">
+        <div className="w-full max-w-[800px] landscape:max-w-[1280px] h-full landscape:max-h-[800px] bg-stone-100 flex overflow-hidden shadow-2xl sm:rounded-[32px] relative border border-stone-300/50">
+          <Sidebar 
+            activeTab={activeTab} 
+            setActiveTab={setActiveTab} 
+            user={user} 
+            onLogout={handleLogout}
+            onOpenCloseShift={() => setShowShiftModal(true)}
+            hasShift={!!shift}
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+            rolePermissions={rolePermissions}
+          />
         
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <header className="h-16 bg-white border-b border-stone-200 flex items-center justify-between px-6 lg:hidden">
@@ -4405,6 +4415,7 @@ export default function App() {
             </div>
           )}
         </AnimatePresence>
+        </div>
       </div>
     </AppContext.Provider>
   );
