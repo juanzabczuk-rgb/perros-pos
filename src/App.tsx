@@ -64,9 +64,9 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
-  sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 
@@ -186,19 +186,60 @@ const useApp = () => {
 
 // --- Components ---
 
-const LoginScreen = ({ onGoogleLogin, onEmailLinkLogin, isFirstUser }: { 
+const LoginScreen = ({ onGoogleLogin, onEmailPasswordLogin, onRegister, isFirstUser }: { 
   onGoogleLogin: () => void,
-  onEmailLinkLogin: (email: string) => void,
+  onEmailPasswordLogin: (email: string, pass: string) => Promise<void>,
+  onRegister: (email: string, pass: string) => Promise<void>,
   isFirstUser: boolean 
 }) => {
-  const [showEmailLink, setShowEmailLink] = useState(false);
+  const [mode, setMode] = useState<'login' | 'register' | 'initial' | 'verify'>(isFirstUser ? 'register' : 'initial');
   const [email, setEmail] = useState('');
-  const [linkSent, setLinkSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleEmailLinkSubmit = (e: React.FormEvent) => {
+  // Check if user is logged in but not verified
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user && !user.emailVerified && user.providerData[0]?.providerId === 'password') {
+      setMode('verify');
+    }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onEmailLinkLogin(email);
-    setLinkSent(true);
+    setError('');
+    setLoading(true);
+    try {
+      if (mode === 'register') {
+        await onRegister(email, password);
+        setMode('verify');
+      } else {
+        await onEmailPasswordLogin(email, password);
+        const user = auth.currentUser;
+        if (user && !user.emailVerified) {
+          setMode('verify');
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error en la autenticación');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (auth.currentUser) {
+      try {
+        setLoading(true);
+        await sendEmailVerification(auth.currentUser);
+        alert('Correo de verificación reenviado.');
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
   };
 
   return (
@@ -214,12 +255,42 @@ const LoginScreen = ({ onGoogleLogin, onEmailLinkLogin, isFirstUser }: {
           </div>
           <h1 className="text-3xl font-black tracking-tighter">Panchería POS</h1>
           <p className="text-stone-400 text-sm mt-2 font-medium">
-            {isFirstUser ? 'Configurar cuenta de propietario' : 'Inicie sesión para continuar'}
+            {mode === 'verify' ? 'Verifique su correo' : isFirstUser ? 'Configurar cuenta de propietario' : mode === 'register' ? 'Crear nueva cuenta' : 'Inicie sesión para continuar'}
           </p>
         </div>
 
+        {error && (
+          <div className="mb-4 p-3 bg-red-900/20 border border-red-900/30 rounded-2xl text-red-400 text-xs font-bold text-center">
+            {error}
+          </div>
+        )}
+
         <div className="space-y-4">
-          {!showEmailLink ? (
+          {mode === 'verify' ? (
+            <div className="text-center space-y-6">
+              <div className="p-4 bg-stone-900/50 rounded-2xl border border-stone-700">
+                <p className="text-stone-300 text-sm leading-relaxed">
+                  Hemos enviado un enlace de verificación a su correo. Por favor, haga clic en el enlace para activar su cuenta.
+                </p>
+              </div>
+              <button 
+                onClick={handleResendVerification}
+                disabled={loading}
+                className="w-full py-4 bg-brand-yellow text-stone-900 font-black rounded-2xl shadow-lg hover:bg-yellow-400 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {loading ? 'Enviando...' : 'Reenviar Correo'}
+              </button>
+              <button 
+                onClick={() => {
+                  auth.signOut();
+                  setMode('initial');
+                }}
+                className="w-full py-4 bg-stone-700 text-white font-bold rounded-2xl hover:bg-stone-600 transition-all text-xs uppercase tracking-widest"
+              >
+                Volver al Inicio
+              </button>
+            </div>
+          ) : mode === 'initial' ? (
             <>
               <button 
                 onClick={onGoogleLogin}
@@ -235,54 +306,58 @@ const LoginScreen = ({ onGoogleLogin, onEmailLinkLogin, isFirstUser }: {
               </button>
               
               <button 
-                onClick={() => setShowEmailLink(true)}
+                onClick={() => setMode('login')}
                 className="w-full py-4 bg-stone-700 text-white font-bold rounded-2xl hover:bg-stone-600 transition-all text-xs uppercase tracking-widest"
               >
-                Ingresar con Vínculo de Email
+                Ingresar con Email
+              </button>
+
+              <button 
+                onClick={() => setMode('register')}
+                className="w-full py-4 bg-stone-800 text-stone-400 font-bold rounded-2xl hover:bg-stone-700 transition-all text-xs uppercase tracking-widest border border-stone-700"
+              >
+                Registrarse
               </button>
             </>
           ) : (
-            <form onSubmit={handleEmailLinkSubmit} className="space-y-4">
-              {linkSent ? (
-                <div className="text-center p-4 bg-green-900/20 rounded-2xl border border-green-900/30">
-                  <p className="text-sm text-green-400 font-bold">¡Vínculo enviado!</p>
-                  <p className="text-[10px] text-green-400/70 mt-1">Revise su correo electrónico para iniciar sesión.</p>
-                  <button 
-                    type="button"
-                    onClick={() => setLinkSent(false)}
-                    className="mt-4 text-xs font-bold text-stone-400 hover:text-stone-300"
-                  >
-                    Volver a intentar
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Email</label>
-                    <input 
-                      type="email" 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
-                      placeholder="admin@pancheria.com"
-                      required
-                    />
-                  </div>
-                  <button 
-                    type="submit"
-                    className="w-full py-4 bg-brand-yellow text-stone-900 font-black rounded-2xl shadow-lg hover:bg-yellow-400 transition-all active:scale-95"
-                  >
-                    Enviar Vínculo
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setShowEmailLink(false)}
-                    className="w-full mt-2 text-xs font-bold text-stone-500 hover:text-stone-300"
-                  >
-                    Volver a Google
-                  </button>
-                </>
-              )}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Email</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
+                  placeholder="admin@pancheria.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-stone-500 uppercase tracking-widest mb-2 ml-1">Contraseña</label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-5 py-4 bg-stone-900/50 rounded-2xl border border-stone-700 focus:ring-2 focus:ring-brand-yellow focus:border-transparent transition-all outline-none"
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-brand-yellow text-stone-900 font-black rounded-2xl shadow-lg hover:bg-yellow-400 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {loading ? 'Procesando...' : mode === 'register' ? 'Registrarse' : 'Iniciar Sesión'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setMode('initial')}
+                className="w-full mt-2 text-xs font-bold text-stone-500 hover:text-stone-300"
+              >
+                Volver
+              </button>
             </form>
           )}
           
@@ -449,6 +524,7 @@ const VentasModule = () => {
   const [customerType, setCustomerType] = useState<'final' | 'client'>('final');
   const [showUserSwitch, setShowUserSwitch] = useState(false);
   const [selectedSwitchUser, setSelectedSwitchUser] = useState<User | null>(null);
+  const [pinInput, setPinInput] = useState('');
   const { allUsers, setUser: setGlobalUser } = useApp();
 
 
@@ -841,14 +917,24 @@ const VentasModule = () => {
 
   const verifyPin = async () => {
     if (selectedSwitchUser) {
-      const isMatch = await bcrypt.compare(pinInput, selectedSwitchUser.pin || '');
-      if (isMatch) {
-        setGlobalUser(selectedSwitchUser);
-        setShowUserSwitch(false);
-        setSelectedSwitchUser(null);
-        setPinInput('');
-      } else {
-        alert('PIN incorrecto');
+      console.log('Verifying PIN for switch user:', selectedSwitchUser.name);
+      console.log('Stored PIN hash:', selectedSwitchUser.pin);
+      console.log('Entered PIN:', pinInput);
+      try {
+        const isMatch = await bcrypt.compare(pinInput, selectedSwitchUser.pin || '');
+        console.log('PIN Match result:', isMatch);
+        if (isMatch) {
+          setGlobalUser(selectedSwitchUser);
+          setShowUserSwitch(false);
+          setSelectedSwitchUser(null);
+          setPinInput('');
+        } else {
+          alert('PIN incorrecto');
+          setPinInput('');
+        }
+      } catch (error) {
+        console.error("Error verifying PIN:", error);
+        alert("Error al verificar el PIN");
         setPinInput('');
       }
     }
@@ -2857,9 +2943,9 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
   useEffect(() => {
     if (!user || (user.role !== 'owner' && user.role !== 'admin')) return;
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const unsubUsers = onSnapshot(collection(db, 'empleados'), (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
 
     const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
       setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -2876,6 +2962,8 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
     const formData = new FormData(e.target as HTMLFormElement);
     const data = Object.fromEntries(formData.entries());
     const pin = formData.get('pin') as string;
+
+    console.log('Saving user. PIN provided:', !!pin, 'Length:', pin?.length);
 
     try {
       const branchName = branches.find(b => b.id === data.branch_id)?.name || 'Sucursal';
@@ -2894,14 +2982,17 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
         
         // Only update PIN if a new one was entered
         if (pin && pin.length >= 4) {
+          console.log('Hashing new PIN for update...');
           updateData.pin = await bcrypt.hash(pin, 10);
         }
         
-        await updateDoc(doc(db, 'users', editingUser.id), updateData);
+        console.log('Updating user doc:', editingUser.id, updateData);
+        await updateDoc(doc(db, 'empleados', editingUser.id), updateData);
         setEditingUser(null);
       } else {
         let hashedPin = '';
         if (pin && pin.length >= 4) {
+          console.log('Hashing new PIN for create...');
           hashedPin = await bcrypt.hash(pin, 10);
         }
         
@@ -2913,18 +3004,20 @@ const Staff = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
         };
         if (!email) delete newUser.email;
 
-        await setDoc(doc(db, 'users', userId), newUser);
+        console.log('Creating new user doc:', userId, newUser);
+        await setDoc(doc(db, 'empleados', userId), newUser);
       }
       setShowAdd(false);
     } catch (err) {
-      handleFirestoreError(err, editingUser ? OperationType.UPDATE : OperationType.CREATE, 'users');
+      console.error('Error saving user:', err);
+      handleFirestoreError(err, editingUser ? OperationType.UPDATE : OperationType.CREATE, 'empleados');
     }
   };
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm('¿Estás seguro de eliminar a este empleado?')) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
+      await deleteDoc(doc(db, 'empleados', id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
     }
@@ -3638,9 +3731,9 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
-      const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+      const unsub = onSnapshot(collection(db, 'empleados'), (snap) => {
         setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
       return () => unsub();
     }
   }, [user]);
@@ -3659,7 +3752,7 @@ export default function App() {
       console.log('Checking if first user...');
       try {
         // Use a simple query that should be allowed by the rules
-        const allUsersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+        const allUsersSnap = await getDocs(query(collection(db, 'empleados'), limit(1)));
         console.log('First user check result (empty):', allUsersSnap.empty);
         setIsFirstUser(allUsersSnap.empty);
       } catch (err) {
@@ -3681,10 +3774,10 @@ export default function App() {
 
   useEffect(() => {
     if (user?.branch_id) {
-      const q = query(collection(db, 'users'), where('branch_id', '==', user.branch_id));
+      const q = query(collection(db, 'empleados'), where('branch_id', '==', user.branch_id));
       const unsub = onSnapshot(q, (snap) => {
         setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
       return () => unsub();
     }
   }, [user?.branch_id]);
@@ -3693,10 +3786,32 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser?.email) {
         console.log('Firebase user authenticated:', firebaseUser.email);
+        
+        // Check email verification
+        if (!firebaseUser.emailVerified && firebaseUser.providerData[0]?.providerId === 'password') {
+          console.log('Email not verified');
+          // We don't sign out immediately to allow them to see the message or resend
+          // But we don't set the user state yet
+          setLoading(false);
+          return;
+        }
+
         try {
-          const userDocSnap = await getDoc(doc(db, 'users', firebaseUser.email));
-          console.log('User doc snapshot exists:', userDocSnap.exists());
+          let userDocSnap = await getDoc(doc(db, 'empleados', firebaseUser.uid));
+          console.log('User doc snapshot exists (uid):', userDocSnap.exists());
           
+          // Migration logic: if not found by uid, try by email
+          if (!userDocSnap.exists()) {
+            const emailDocSnap = await getDoc(doc(db, 'empleados', firebaseUser.email));
+            if (emailDocSnap.exists()) {
+              console.log('Found user by email, migrating to uid...');
+              const data = emailDocSnap.data();
+              await setDoc(doc(db, 'empleados', firebaseUser.uid), data);
+              await deleteDoc(doc(db, 'empleados', firebaseUser.email));
+              userDocSnap = await getDoc(doc(db, 'empleados', firebaseUser.uid));
+            }
+          }
+
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data() as User;
             userData.id = userDocSnap.id;
@@ -3712,14 +3827,14 @@ export default function App() {
           } else {
             console.log('User document does not exist yet. Checking if first user...');
             // Check if it's the first user (owner)
-            const allUsersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+            const allUsersSnap = await getDocs(query(collection(db, 'empleados'), limit(1)));
             console.log('All users snap empty:', allUsersSnap.empty);
             
             if (allUsersSnap.empty || firebaseUser.email === 'juanzabczuk@gmail.com') {
               console.log('Setting up as first user/owner');
               const hashedPin = await bcrypt.hash('1234', 10);
               const setupUser: User = {
-                id: firebaseUser.email,
+                id: firebaseUser.uid,
                 name: firebaseUser.displayName || 'Administrador',
                 email: firebaseUser.email,
                 role: 'owner',
@@ -3732,7 +3847,7 @@ export default function App() {
               // Save it to firestore if it's the first user
               if (allUsersSnap.empty) {
                 console.log('Saving initial owner document...');
-                await setDoc(doc(db, 'users', firebaseUser.email), setupUser);
+                await setDoc(doc(db, 'empleados', firebaseUser.uid), setupUser);
                 await setDoc(doc(db, 'branches', 'default'), {
                   name: 'Sucursal Inicial',
                   created_at: serverTimestamp()
@@ -3741,14 +3856,14 @@ export default function App() {
             } else {
               console.log('User not authorized');
               setUser(null);
-              alert('Usuario no autorizado. Contacte al administrador.');
+              alert('Usuario no autorizado. Contacte al administrador para que le asigne un rol.');
               await auth.signOut();
             }
           }
         } catch (err: any) {
           console.error('Auth error detail:', err);
           if (err.code === 'permission-denied') {
-            console.error('Permission denied during auth check. This might be because the user document does not exist yet or rules are too restrictive.');
+            console.error('Permission denied during auth check.');
           }
         }
       } else {
@@ -3798,11 +3913,11 @@ export default function App() {
   };
 
   const performOpenShift = async (initialCash: number, notes: string) => {
-    if (!user) return;
+    if (!user || !activeOperator) return;
     try {
       await addDoc(collection(db, 'shifts'), {
-        user_id: user.id,
-        user_name: user.name,
+        user_id: activeOperator.id,
+        user_name: activeOperator.name,
         branch_id: user.branch_id,
         start_time: serverTimestamp(),
         end_time: null,
@@ -3826,8 +3941,8 @@ export default function App() {
     const initialCash = parseFloat(formData.get('initial_cash') as string);
     const notes = (formData.get('notes') as string) || '';
 
-    // If user has a PIN, we must verify it
-    if (user.pin && !pinAction) {
+    // If operator has a PIN, we must verify it
+    if (activeOperator?.pin && !pinAction) {
       setPinAction({ type: 'open', data: { initialCash, notes } });
       setPinInput('');
       setPinError(false);
@@ -3876,7 +3991,7 @@ export default function App() {
 
       const summary = {
         shift_id: shift.id,
-        user_name: user.name,
+        user_name: activeOperator?.name || user.name,
         start_time: shift.start_time,
         end_time: endTime,
         initial_cash: shift.initial_cash,
@@ -3921,8 +4036,8 @@ export default function App() {
     const realCash = parseFloat(formData.get('real_cash') as string);
     const notes = (formData.get('notes') as string) || '';
 
-    // If user has a PIN, we must verify it
-    if (user.pin && !pinAction) {
+    // If operator has a PIN, we must verify it
+    if (activeOperator?.pin && !pinAction) {
       setPinAction({ type: 'close', data: { realCash, notes } });
       setPinInput('');
       setPinError(false);
@@ -3944,10 +4059,18 @@ export default function App() {
   };
 
   const verifyPin = async () => {
-    if (!activeOperator || !activeOperator.pin || !pinAction) return;
+    if (!activeOperator || !activeOperator.pin || !pinAction) {
+      console.log('verifyPin aborted:', { activeOperator: !!activeOperator, hasPin: !!activeOperator?.pin, pinAction: !!pinAction });
+      return;
+    }
     
+    console.log('Verifying shift PIN for operator:', activeOperator.name);
+    console.log('Stored PIN hash:', activeOperator.pin);
+    console.log('Entered PIN:', pinInput);
+
     try {
       const isMatch = await bcrypt.compare(pinInput, activeOperator.pin);
+      console.log('PIN Match result:', isMatch);
       
       if (isMatch) {
         setShowPinModal(false);
@@ -3969,8 +4092,13 @@ export default function App() {
   const verifyOperatorPin = async () => {
     if (!selectedUserForPin) return;
     
+    console.log('Verifying operator PIN for:', selectedUserForPin.name);
+    console.log('Stored PIN hash:', selectedUserForPin.pin);
+    console.log('Entered PIN:', operatorPinInput);
+
     try {
       const isMatch = await bcrypt.compare(operatorPinInput, selectedUserForPin.pin || '');
+      console.log('PIN Match result:', isMatch);
       if (isMatch) {
         setActiveOperator(selectedUserForPin);
         setSelectedUserForPin(null);
@@ -4100,49 +4228,38 @@ export default function App() {
     }
   };
 
-  const handleEmailLinkLogin = async (email: string) => {
-    const actionCodeSettings = {
-      // URL you want to redirect back to. The domain (www.example.com) for this
-      // URL must be in the authorized domains list in the Firebase Console.
-      url: window.location.origin,
-      // This must be true.
-      handleCodeInApp: true,
-    };
-
+  const handleEmailPasswordLogin = async (email: string, pass: string) => {
     try {
-      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-      // Save the email locally so you don't have to ask the user for it again
-      // if they open the link on the same device.
-      window.localStorage.setItem('emailForSignIn', email);
+      await signInWithEmailAndPassword(auth, email, pass);
     } catch (err: any) {
-      console.error('Email link error:', err);
-      alert('Error al enviar el vínculo: ' + err.message);
+      console.error('Email login error:', err);
+      throw err;
     }
   };
 
-  useEffect(() => {
-    const handleSignInLink = async () => {
-      if (isSignInWithEmailLink(auth, window.location.href)) {
-        let email = window.localStorage.getItem('emailForSignIn');
-        if (!email) {
-          // User opened the link on a different device. To prevent session fixation
-          // attacks, ask the user to provide the associated email again. For now,
-          // we'll just prompt them.
-          email = window.prompt('Por favor, ingrese su email para confirmar el inicio de sesión:');
-        }
-        if (email) {
-          try {
-            await signInWithEmailLink(auth, email, window.location.href);
-            window.localStorage.removeItem('emailForSignIn');
-          } catch (err: any) {
-            console.error('Sign in with email link error:', err);
-            alert('Error al iniciar sesión con el vínculo: ' + err.message);
-          }
-        }
-      }
-    };
-    handleSignInLink();
-  }, []);
+  const handleRegister = async (email: string, pass: string) => {
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+      await sendEmailVerification(userCred.user);
+      
+      // Create initial document with 'vendedor' role by default
+      // This will be overwritten by 'owner' if it's the first user in onAuthStateChanged
+      const hashedPin = await bcrypt.hash('1234', 10);
+      await setDoc(doc(db, 'empleados', userCred.user.uid), {
+        name: email.split('@')[0],
+        email: email,
+        role: 'seller',
+        branch_id: 'default',
+        pin: hashedPin,
+        created_at: serverTimestamp()
+      });
+
+      alert('Se ha enviado un correo de verificación. Por favor, revise su bandeja de entrada.');
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      throw err;
+    }
+  };
 
   const handleLogout = async () => {
     await auth.signOut();
@@ -4159,7 +4276,8 @@ export default function App() {
     return (
       <LoginScreen 
         onGoogleLogin={handleGoogleLogin} 
-        onEmailLinkLogin={handleEmailLinkLogin}
+        onEmailPasswordLogin={handleEmailPasswordLogin}
+        onRegister={handleRegister}
         isFirstUser={isFirstUser} 
       />
     );
@@ -4317,7 +4435,13 @@ export default function App() {
                       key={u.id}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => setSelectedUserForPin(u)}
+                      onClick={() => {
+                        if (!u.pin) {
+                          setActiveOperator(u);
+                        } else {
+                          setSelectedUserForPin(u);
+                        }
+                      }}
                       className="aspect-square bg-stone-800 rounded-[40px] flex flex-col items-center justify-center p-6 transition-colors hover:bg-brand-red group"
                     >
                       <div className="w-20 h-20 bg-stone-700 rounded-full flex items-center justify-center mb-4 group-hover:bg-white/20">

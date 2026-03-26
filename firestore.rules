@@ -8,22 +8,42 @@ service cloud.firestore {
     }
     
     function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+      return get(/databases/$(database)/documents/empleados/$(request.auth.uid)).data;
     }
     
-    function isOwnerOrAdmin() {
-      return isAuthenticated() && (getUserData().role == 'owner' || getUserData().role == 'admin');
+    function isAdmin() {
+      return isAuthenticated() && 
+        (getUserData().role == 'admin' || getUserData().role == 'owner' ||
+         (request.auth.token.email == "juanzabczuk@gmail.com" && request.auth.token.email_verified == true));
     }
 
     function isOwner() {
       return isAuthenticated() && getUserData().role == 'owner';
     }
 
-    // Users collection
-    match /users/{userEmail} {
-      allow read: if isAuthenticated() && (request.auth.token.email == userEmail || isOwnerOrAdmin());
-      allow create: if isAuthenticated(); // Allow first user registration
-      allow update, delete: if isOwnerOrAdmin();
+    function isOwnerOrAdmin() {
+      return isAdmin() || isOwner();
+    }
+
+    function isDocOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role', 'branch_id']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.role in ['owner', 'admin', 'seller'];
+    }
+
+    // Empleados collection
+    match /empleados/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isOwnerOrAdmin());
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (request.auth.uid == userId || isOwnerOrAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isOwnerOrAdmin() || (request.auth.uid == userId && request.resource.data.role == resource.data.role));
+      allow delete: if isOwnerOrAdmin();
     }
 
     // Branches, Categories, Products, RolePermissions

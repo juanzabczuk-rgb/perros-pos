@@ -134,7 +134,7 @@
     }
   },
   "firestore": {
-    "/users": { "schema": "User", "description": "Users collection" },
+    "/empleados": { "schema": "User", "description": "Users collection" },
     "/branches": { "schema": "Branch", "description": "Branches collection" },
     "/categories": { "schema": "Category", "description": "Product categories" },
     "/products": { "schema": "Product", "description": "Products catalog" },
