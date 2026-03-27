@@ -1061,37 +1061,38 @@ const VentasModule = () => {
 
         <div className="flex-1 overflow-y-auto noscrollbar pb-4">
           {showCaja ? (
-            <div className="max-w-2xl mx-auto bg-white rounded-[40px] shadow-sm border border-stone-100 overflow-hidden">
-              <div className="p-8 space-y-8">
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => setShowMovementModal('income')}
-                    className="flex-1 py-3 bg-green-500 text-white font-black rounded-xl shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <PlusCircle size={16} />
-                    Ingreso
-                  </button>
-                  <button 
-                    onClick={() => setShowMovementModal('expense')}
-                    className="flex-1 py-3 bg-red-500 text-white font-black rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <MinusCircle size={16} />
-                    Egreso
-                  </button>
-                  <button 
-                    onClick={onOpenCloseShift}
-                    className="flex-1 py-3 bg-stone-900 text-white font-black rounded-xl shadow-lg shadow-stone-900/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
-                  >
-                    <LogOut size={16} />
-                    Cerrar Turno
-                  </button>
-                </div>
+            <div className="max-w-2xl mx-auto space-y-4">
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowMovementModal('income')}
+                  className="flex-1 py-4 bg-green-500 text-white font-black rounded-2xl shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  <PlusCircle size={18} />
+                  Ingreso
+                </button>
+                <button 
+                  onClick={() => setShowMovementModal('expense')}
+                  className="flex-1 py-4 bg-red-500 text-white font-black rounded-2xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  <MinusCircle size={18} />
+                  Egreso
+                </button>
+                <button 
+                  onClick={onOpenCloseShift}
+                  className="flex-1 py-4 bg-stone-900 text-white font-black rounded-2xl shadow-lg shadow-stone-900/20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all"
+                >
+                  <LogOut size={18} />
+                  Cerrar Turno
+                </button>
+              </div>
 
-                <div>
-                  <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <div className="w-1 h-1 bg-brand-red rounded-full" />
-                    Información de Turno
-                  </h3>
+              <div className="bg-white rounded-[40px] shadow-sm border border-stone-100 overflow-hidden">
+                <div className="p-8 space-y-8">
+                  <div>
+                    <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <div className="w-1 h-1 bg-brand-red rounded-full" />
+                      Información de Turno
+                    </h3>
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-stone-500 font-bold">Nombre vendedor</span>
@@ -1187,6 +1188,7 @@ const VentasModule = () => {
                 </div>
               </div>
             </div>
+          </div>
           ) : showHistory ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -3708,7 +3710,8 @@ export default function App() {
             }
             
             setUser(userData);
-            setActiveOperator(userData);
+            // Don't set activeOperator automatically to force PIN screen
+            setActiveOperator(null);
           } else {
             console.log('User document does not exist yet. Checking if first user...');
             // Check if it's the first user (owner)
@@ -3741,7 +3744,8 @@ export default function App() {
               }, { merge: true });
 
               setUser(setupUser);
-              setActiveOperator(setupUser);
+              // Don't set activeOperator automatically to force PIN screen
+              setActiveOperator(null);
             } else {
               console.log('User not authorized');
               setUser(null);
@@ -3762,10 +3766,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user?.id) {
+    if (activeOperator?.id) {
       const q = query(
         collection(db, 'shifts'), 
-        where('user_id', '==', user.id), 
+        where('user_id', '==', activeOperator.id), 
         where('end_time', '==', null),
         limit(1)
       );
@@ -3777,8 +3781,10 @@ export default function App() {
         }
       }, (err) => handleFirestoreError(err, OperationType.LIST, 'shifts'));
       return () => unsubShift();
+    } else {
+      setShift(null);
     }
-  }, [user?.id]);
+  }, [activeOperator?.id]);
 
   useEffect(() => {
     if (user && !shift && !loading && !showShiftSummary) {
@@ -3945,26 +3951,30 @@ export default function App() {
   };
 
   const verifyPin = async () => {
-    if (!activeOperator || !activeOperator.pin || !pinAction) {
-      console.log('verifyPin aborted:', { activeOperator: !!activeOperator, hasPin: !!activeOperator?.pin, pinAction: !!pinAction });
+    if (!activeOperator || !pinAction) {
+      console.log('verifyPin aborted:', { activeOperator: !!activeOperator, pinAction: !!pinAction });
       return;
     }
     
     console.log('Verifying shift PIN for operator:', activeOperator.name);
-    console.log('Stored PIN hash:', activeOperator.pin);
-    console.log('Entered PIN:', pinInput);
 
     try {
-      const isMatch = await bcrypt.compare(pinInput, activeOperator.pin);
-      console.log('PIN Match result:', isMatch);
+      const response = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorId: activeOperator.id, pin: pinInput })
+      });
+
+      const result = await response.json();
       
-      if (isMatch) {
+      if (result.success) {
         setShowPinModal(false);
         if (pinAction.type === 'open') {
           await performOpenShift(pinAction.data.initialCash, pinAction.data.notes);
         } else if (pinAction.type === 'close') {
           await performCloseShift(pinAction.data.realCash, pinAction.data.notes);
         }
+        setPinInput('');
       } else {
         setPinError(true);
         setPinInput('');
@@ -3979,18 +3989,24 @@ export default function App() {
     if (!selectedUserForPin) return;
     
     console.log('Verifying operator PIN for:', selectedUserForPin.name);
-    console.log('Stored PIN hash:', selectedUserForPin.pin);
-    console.log('Entered PIN:', operatorPinInput);
 
     try {
-      const isMatch = await bcrypt.compare(operatorPinInput, selectedUserForPin.pin || '');
-      console.log('PIN Match result:', isMatch);
-      if (isMatch) {
-        setActiveOperator(selectedUserForPin);
+      const response = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorId: selectedUserForPin.id, pin: operatorPinInput })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('PIN verified successfully');
+        setActiveOperator(result.operator);
         setSelectedUserForPin(null);
         setOperatorPinInput('');
         setOperatorPinError(false);
       } else {
+        console.log('PIN verification failed:', result.error);
         setOperatorPinError(true);
         setOperatorPinInput('');
       }
@@ -4369,7 +4385,7 @@ export default function App() {
                   type="password" 
                   value={operatorPinInput}
                   onChange={(e) => {
-                    setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
                     setOperatorPinError(false);
                   }}
                   onKeyDown={(e) => e.key === 'Enter' && verifyOperatorPin()}
@@ -4408,7 +4424,7 @@ export default function App() {
                       type="password" 
                       value={pinInput}
                       onChange={(e) => {
-                        setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+                        setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
                         setPinError(false);
                       }}
                       onKeyDown={(e) => e.key === 'Enter' && verifyPin()}

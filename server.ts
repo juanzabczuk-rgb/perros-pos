@@ -3,9 +3,46 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import admin from "firebase-admin";
+import bcrypt from "bcryptjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Firebase Admin
+let db: admin.firestore.Firestore;
+
+try {
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  let firebaseConfig: any = {};
+  
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+
+  // Initialize with default credentials - most reliable in Cloud Run
+  if (!admin.apps.length) {
+    console.log(`Initializing Firebase Admin with project ID: ${firebaseConfig.projectId}`);
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId
+    });
+  }
+  
+  // Use the database ID from config if available
+  const databaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' 
+    ? firebaseConfig.firestoreDatabaseId 
+    : undefined;
+
+  // @ts-expect-error - databaseId is supported in newer versions of firebase-admin
+  db = databaseId ? admin.firestore(databaseId) : admin.firestore();
+  
+  console.log(`Firebase Admin initialized.`);
+  console.log(`Project ID: ${admin.app().options.projectId}`);
+  console.log(`Database ID: ${databaseId || '(default)'}`);
+} catch (error) {
+  console.error("Failed to initialize Firebase Admin:", error);
+  process.exit(1);
+}
 
 async function startServer() {
   const app = express();
@@ -16,6 +53,43 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // PIN Verification Endpoint
+  app.post("/api/auth/verify-pin", async (req, res) => {
+    const { operatorId, pin } = req.body;
+
+    if (!operatorId || !pin) {
+      return res.status(400).json({ error: "Faltan datos" });
+    }
+
+    try {
+      const operatorDoc = await db.collection("empleados").doc(operatorId).get();
+      
+      if (!operatorDoc.exists) {
+        return res.status(404).json({ error: "Operador no encontrado" });
+      }
+
+      const operatorData = operatorDoc.data();
+      const storedPinHash = operatorData?.pin;
+
+      if (!storedPinHash) {
+        return res.status(400).json({ error: "El operador no tiene PIN configurado" });
+      }
+
+      const isMatch = await bcrypt.compare(pin, storedPinHash);
+
+      if (isMatch) {
+        // Return success and operator data (excluding sensitive info)
+        const { pin: _, ...safeData } = operatorData;
+        return res.json({ success: true, operator: { id: operatorDoc.id, ...safeData } });
+      } else {
+        return res.status(401).json({ error: "PIN incorrecto" });
+      }
+    } catch (error) {
+      console.error("Error verifying PIN:", error);
+      return res.status(500).json({ error: "Error interno del servidor" });
+    }
   });
 
   // Vite middleware for development

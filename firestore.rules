@@ -38,7 +38,7 @@ service cloud.firestore {
 
     // Empleados collection
     match /empleados/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isOwnerOrAdmin());
+      allow read: if isAuthenticated(); // Allow listing operators for selection
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
                     (request.auth.uid == userId || isOwnerOrAdmin());
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
