@@ -33,23 +33,40 @@ const App = () => {
   }
 
   if (!user) {
+    if (auth.currentUser && isFirstUser) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center"
+          >
+            <h2 className="text-xl font-bold mb-4">Configurando cuenta de propietario...</h2>
+            <button 
+              onClick={async () => {
+                if (auth.currentUser) {
+                  await authService.createInitialUser(auth.currentUser);
+                }
+              }}
+              className="px-6 py-3 bg-brand-yellow text-stone-900 font-bold rounded-xl"
+            >
+              Confirmar Creación de Cuenta
+            </button>
+          </motion.div>
+        </div>
+      );
+    }
+
     return (
       <LoginScreen 
         isFirstUser={isFirstUser} 
-        onGoogleLogin={async () => {
-          const firebaseUser = await authService.loginWithGoogle();
-          if (isFirstUser && firebaseUser) {
-            await authService.createInitialUser(firebaseUser);
-          }
-        }}
         onEmailPasswordLogin={async (email, pass) => {
           await authService.loginWithEmail(email, pass);
         }}
         onRegister={async (email, pass) => {
           const firebaseUser = await authService.registerWithEmail(email, pass);
-          if (isFirstUser && firebaseUser) {
-            await authService.createInitialUser(firebaseUser);
-          }
+          // The AppContext will detect the new auth state and update isFirstUser
+          // If it's the first user, the block above will handle it.
         }}
       />
     );
@@ -82,7 +99,7 @@ const App = () => {
         />
         <main className="flex-1 relative overflow-hidden flex flex-col">
           {/* Top Bar for Mobile/Tablet */}
-          <header className="xl:hidden h-16 bg-white border-b border-stone-200 flex items-center px-6 shrink-0">
+          <header className="lg:hidden h-16 bg-white border-b border-stone-200 flex items-center px-6 shrink-0">
             <button 
               onClick={() => setIsSidebarOpen(true)}
               className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors shadow-sm"
@@ -95,7 +112,7 @@ const App = () => {
                  activeTab === 'inventory' ? 'Stock de Productos' :
                  activeTab === 'customers' ? 'Gestión de Clientes' :
                  activeTab === 'dashboard' ? 'Estadísticas y Reportes' :
-                 activeTab === 'staff' ? 'Gestión de Personal' : 'Configuración'}
+                 activeTab === 'staff' ? 'Gestión de Personal' : 'Ajustes'}
               </h1>
             </div>
           </header>

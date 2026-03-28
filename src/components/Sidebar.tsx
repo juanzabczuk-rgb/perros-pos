@@ -59,13 +59,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-40 xl:hidden"
+            className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-40 lg:hidden"
           />
         )}
       </AnimatePresence>
 
       {/* Sidebar Container */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-stone-900 text-stone-400 flex flex-col border-r border-stone-800 transition-transform duration-300 xl:relative xl:translate-x-0 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-stone-900 text-stone-400 flex flex-col border-r border-stone-800 transition-transform duration-300 lg:relative lg:translate-x-0 ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="p-8 flex items-center justify-between">

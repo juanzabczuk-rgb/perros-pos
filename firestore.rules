@@ -29,27 +29,47 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
+    function validString(field, min, max) {
+      return field is string && field.size() >= min && field.size() <= max;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
     // Domain Validators
     function isValidUser(data) {
       return data.keys().hasAll(['name', 'role', 'branch_id']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             (data.get('email', '') is string) && data.role in ['owner', 'admin', 'seller'];
+             validString(data.name, 1, 100) &&
+             (data.get('email', '') == '' || isValidEmail(data.email)) &&
+             data.role in ['owner', 'admin', 'seller'];
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'sku', 'category', 'cost', 'price']) &&
+             validString(data.name, 1, 200) &&
+             validString(data.sku, 1, 50) &&
+             data.cost is number && data.cost >= 0 &&
+             data.price is number && data.price >= 0;
+    }
+
+    function isValidSale(data) {
+      return data.keys().hasAll(['branch_id', 'user_id', 'total', 'payment_type', 'status']) &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['completed', 'refunded'];
     }
 
     // Empleados collection
     match /empleados/{userId} {
-      // Allow reading basic info for selection, but restrict full access
       allow read: if isAuthenticated(); 
       
-      // Only admins or the owner can create/update employees
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    (isOwnerOrAdmin());
+                    (isOwnerOrAdmin() || (request.auth.token.email == "juanzabczuk@gmail.com" && request.auth.token.email_verified == true));
       
-      // Prevent non-admins from changing their own role or other sensitive fields
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
                     (isOwnerOrAdmin() || (request.auth.uid == userId && 
                      request.resource.data.role == resource.data.role &&
-                     (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['pin', 'role', 'branch_id']))));
+                     (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'branch_id']))));
       
       allow delete: if isOwnerOrAdmin();
     }
@@ -65,7 +85,7 @@ service cloud.firestore {
     }
     match /products/{productId} {
       allow read: if isAuthenticated();
-      allow write: if isOwnerOrAdmin();
+      allow write: if isOwnerOrAdmin() && isValidProduct(request.resource.data);
     }
     match /role_permissions/{roleId} {
       allow read: if isAuthenticated();
@@ -82,8 +102,8 @@ service cloud.firestore {
     // Sales
     match /sales/{saleId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isOwnerOrAdmin(); // For refunds
+      allow create: if isAuthenticated() && isValidSale(request.resource.data);
+      allow update: if isOwnerOrAdmin() && isValidSale(request.resource.data); // For refunds
       allow delete: if isOwnerOrAdmin();
     }
 

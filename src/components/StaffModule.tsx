@@ -26,7 +26,10 @@ import {
   Calendar, 
   DollarSign, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  TrendingUp,
+  UserCircle,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import bcrypt from 'bcryptjs';
@@ -41,6 +44,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
   const [branches, setBranches] = useState<any[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userShifts, setUserShifts] = useState<any[]>([]);
   const [showShifts, setShowShifts] = useState(false);
@@ -55,11 +59,17 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
 
     const unsubUsers = onSnapshot(collection(db, 'empleados'), (snapshot) => {
       setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'empleados');
+    });
 
     const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
       setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'branches'));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'branches');
+    });
 
     return () => {
       unsubUsers();
@@ -118,12 +128,13 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
     }
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar a este empleado?')) return;
+  const handleDeleteUser = async () => {
+    if (!deletingUser) return;
     try {
-      await deleteDoc(doc(db, 'empleados', id));
+      await deleteDoc(doc(db, 'empleados', deletingUser.id));
+      setDeletingUser(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${id}`);
+      handleFirestoreError(err, OperationType.DELETE, `users/${deletingUser.id}`);
     }
   };
 
@@ -196,7 +207,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
             key={u.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-8 rounded-[40px] shadow-sm border border-stone-100 hover:shadow-xl hover:shadow-stone-200/50 transition-all group"
+            className="bg-white p-8 rounded-[40px] shadow-sm border border-stone-200 hover:shadow-xl hover:shadow-stone-200/50 transition-all group"
           >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
@@ -245,7 +256,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
                 Ver Turnos
               </button>
               <button 
-                onClick={() => handleDeleteUser(u.id)}
+                onClick={() => setDeletingUser(u)}
                 className="p-2 bg-stone-50 hover:bg-red-50 text-stone-400 hover:text-red-500 rounded-xl transition-all"
               >
                 <Trash2 size={16} />
@@ -257,9 +268,9 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
 
       <AnimatePresence>
         {(showAdd || editingUser) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowAdd(false); setEditingUser(null); }} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden border border-stone-200">
               <form onSubmit={handleAdd} className="p-8">
                 <h2 className="text-2xl font-black mb-6">{editingUser ? 'Editar' : 'Nuevo'} Empleado</h2>
                 <div className="space-y-4">
@@ -306,10 +317,10 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
         )}
 
         {showRoles && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowRoles(false)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="p-8 border-b border-stone-100 flex items-center justify-between">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-stone-200">
+              <div className="p-8 border-b border-stone-200 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-black text-stone-900">Roles y Permisos</h2>
                   <p className="text-stone-500 text-sm">Configura qué módulos puede ver cada rol</p>
@@ -351,7 +362,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
                               className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${
                                 isEnabled 
                                   ? 'bg-stone-900 border-stone-900 text-white shadow-lg shadow-stone-900/20' 
-                                  : 'bg-white border-stone-100 text-stone-400 hover:border-stone-200'
+                                  : 'bg-white border-stone-200 text-stone-400 hover:border-stone-300'
                               }`}
                             >
                               <mod.icon size={18} />
@@ -369,10 +380,10 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
         )}
 
         {showShifts && selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowShifts(false)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-4xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="p-8 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-4xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-stone-200">
+              <div className="p-8 border-b border-stone-200 flex items-center justify-between bg-stone-50">
                 <div>
                   <h2 className="text-2xl font-black text-stone-900">Historial de Turnos</h2>
                   <p className="text-stone-500 font-medium">Empleado: <span className="text-stone-900 font-black">{selectedUser.name}</span></p>
@@ -382,7 +393,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
                 </button>
               </div>
 
-              <div className="p-8 border-b border-stone-100 bg-white flex flex-wrap items-center gap-4">
+              <div className="p-8 border-b border-stone-200 bg-white flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Calendar size={18} className="text-stone-400" />
                   <input 
@@ -436,7 +447,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
                       const duration = actualEnd ? (actualEnd.getTime() - start.getTime()) / (1000 * 60 * 60) : 0;
 
                       return (
-                        <div key={idx} className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all">
+                        <div key={idx} className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-all">
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center">
@@ -475,6 +486,47 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
                     })
                   )}
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {deletingUser && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setDeletingUser(null)} 
+              className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }} 
+              className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl p-8 border border-stone-200"
+            >
+              <div className="w-16 h-16 bg-red-100 rounded-3xl flex items-center justify-center text-red-600 mb-6">
+                <Trash2 size={32} />
+              </div>
+              <h2 className="text-2xl font-black text-stone-900 mb-2">¿Eliminar Empleado?</h2>
+              <p className="text-stone-500 font-medium mb-8">
+                Esta acción eliminará permanentemente a <span className="text-stone-900 font-black">{deletingUser.name}</span> del sistema. Esta acción no se puede deshacer.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setDeletingUser(null)}
+                  className="flex-1 py-4 font-black text-stone-500 hover:bg-stone-50 rounded-2xl transition-all uppercase tracking-widest text-xs"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleDeleteUser}
+                  className="flex-1 py-4 bg-red-600 text-white font-black rounded-2xl shadow-xl shadow-red-600/20 hover:bg-red-700 transition-all uppercase tracking-widest text-xs"
+                >
+                  Eliminar
+                </button>
               </div>
             </motion.div>
           </div>

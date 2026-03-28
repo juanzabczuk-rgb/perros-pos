@@ -84,57 +84,68 @@ export const VentasModule = () => {
   };
 
   useEffect(() => {
+    if (!user) return;
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'products');
+    });
 
     const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'customers'));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'customers');
+    });
 
     return () => {
       unsubProducts();
       unsubCustomers();
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    if (user?.branch_id) {
-      const q = query(
-        collection(db, 'sales'),
-        where('branch_id', '==', user.branch_id),
-        limit(100)
-      );
-      const unsubHistory = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-        docs.sort((a, b) => {
-          const dateA = a.created_at?.seconds || 0;
-          const dateB = b.created_at?.seconds || 0;
-          return dateB - dateA;
-        });
-        setSalesHistory(docs.slice(0, 50));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
-      return () => unsubHistory();
-    }
+    if (!user?.branch_id) return;
+    const q = query(
+      collection(db, 'sales'),
+      where('branch_id', '==', user.branch_id),
+      limit(100)
+    );
+    const unsubHistory = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      docs.sort((a, b) => {
+        const dateA = a.created_at?.seconds || 0;
+        const dateB = b.created_at?.seconds || 0;
+        return dateB - dateA;
+      });
+      setSalesHistory(docs.slice(0, 50));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'sales');
+    });
+    return () => unsubHistory();
   }, [user?.branch_id]);
 
   useEffect(() => {
-    if (shift?.id) {
-      const q = query(
-        collection(db, 'cash_movements'),
-        where('shift_id', '==', shift.id)
-      );
-      const unsub = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashMovement));
-        docs.sort((a, b) => {
-          const dateA = (a.created_at as any)?.seconds || 0;
-          const dateB = (b.created_at as any)?.seconds || 0;
-          return dateB - dateA;
-        });
-        setMovements(docs);
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'cash_movements'));
-      return () => unsub();
-    }
+    if (!shift?.id) return;
+    const q = query(
+      collection(db, 'cash_movements'),
+      where('shift_id', '==', shift.id)
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashMovement));
+      docs.sort((a, b) => {
+        const dateA = (a.created_at as any)?.seconds || 0;
+        const dateB = (b.created_at as any)?.seconds || 0;
+        return dateB - dateA;
+      });
+      setMovements(docs);
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'cash_movements');
+    });
+    return () => unsub();
   }, [shift?.id]);
 
   const handleRefund = async (saleId: string) => {

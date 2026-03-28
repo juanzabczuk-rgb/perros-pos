@@ -73,11 +73,17 @@ export const DashboardModule = () => {
         }
 
         // Items subcollection
-        const itemsSnap = await getDocs(collection(db, `sales/${sale.id}/items`));
-        itemsSnap.docs.forEach(itemDoc => {
-          const item = itemDoc.data();
-          productsMap[item.name] = (productsMap[item.name] || 0) + item.quantity;
-        });
+        try {
+          const itemsSnap = await getDocs(collection(db, `sales/${sale.id}/items`));
+          itemsSnap.docs.forEach(itemDoc => {
+            const item = itemDoc.data();
+            productsMap[item.name] = (productsMap[item.name] || 0) + item.quantity;
+          });
+        } catch (err: any) {
+          if (err.code !== 'permission-denied') {
+            console.error("Error fetching sale items:", err);
+          }
+        }
       }
 
       const topProducts = Object.entries(productsMap)
@@ -95,7 +101,10 @@ export const DashboardModule = () => {
         totalTaxes,
         rawSales: sales
       });
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'sales');
+    });
 
     return () => unsub();
   }, [user?.branch_id]);
@@ -111,8 +120,8 @@ export const DashboardModule = () => {
     { id: 'top_sales', label: 'Top 12 de Ventas', icon: TrendingUp },
     { id: 'by_product', label: 'Venta por Artículo', icon: Package },
     { id: 'by_employee', label: 'Venta por Empleado', icon: UserCircle },
+    { id: 'by_payment', label: 'Tipo de Pago', icon: Banknote },
     { id: 'receipts', label: 'Recibos', icon: History },
-    { id: 'by_payment', label: 'Ventas por Tipo de Pago', icon: Banknote },
     { id: 'discounts', label: 'Descuentos', icon: Tag },
     { id: 'taxes', label: 'Impuesto', icon: CreditCard },
     { id: 'cash', label: 'Caja', icon: Store },
@@ -122,7 +131,7 @@ export const DashboardModule = () => {
     <div className="flex h-full bg-stone-50 overflow-hidden">
       {/* Reports Sidebar */}
       <div className="w-64 bg-white border-r border-stone-200 flex flex-col">
-        <div className="p-6 border-b border-stone-100">
+        <div className="p-6 border-b border-stone-200">
           <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">Estadísticas</h2>
           <p className="text-xs text-stone-400 font-bold mt-1">REPORTES DEL DÍA</p>
         </div>
@@ -186,8 +195,7 @@ export const DashboardModule = () => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm relative overflow-hidden group">
+                  <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                       <ShoppingBag size={80} className="text-stone-900" />
                     </div>
@@ -205,8 +213,8 @@ export const DashboardModule = () => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm relative overflow-hidden group">
+ 
+                  <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
                       <Users size={80} className="text-stone-900" />
                     </div>
@@ -229,7 +237,7 @@ export const DashboardModule = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <div className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm">
+                  <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
                     <h3 className="text-xl font-black text-stone-900 mb-8 uppercase tracking-tight">Top Productos</h3>
                     <div className="space-y-6">
                       {stats.topProducts.map((p: any, i: number) => (
@@ -255,7 +263,7 @@ export const DashboardModule = () => {
                     </div>
                   </div>
 
-                  <div className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm">
+                  <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
                     <h3 className="text-xl font-black text-stone-900 mb-8 uppercase tracking-tight">Ventas por Empleado</h3>
                     <div className="space-y-6">
                       {stats.salesByEmployee.map((e: any, i: number) => (
@@ -280,7 +288,7 @@ export const DashboardModule = () => {
                 <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Top 12 de Ventas</h1>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {stats.topProducts.map((p: any, i: number) => (
-                    <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm flex items-center justify-between">
+                    <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center text-white font-black">
                           {i + 1}
@@ -298,10 +306,10 @@ export const DashboardModule = () => {
 
             {activeReport === 'by_payment' && (
               <div className="space-y-6">
-                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Ventas por Tipo de Pago</h1>
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Tipo de Pago</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {stats.salesByPayment.map((p: any, i: number) => (
-                    <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm flex items-center justify-between">
+                    <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-stone-50 rounded-2xl flex items-center justify-center">
                           <Banknote className="text-stone-400" size={24} />
@@ -322,22 +330,22 @@ export const DashboardModule = () => {
               <div className="space-y-6">
                 <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Caja</h1>
                 <div className="grid grid-cols-2 gap-6">
-                  <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm">
+                  <div className="bg-white p-8 rounded-[32px] border border-stone-200 shadow-sm">
                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Efectivo en Caja</p>
                     <h3 className="text-4xl font-black text-stone-900">
                       ${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}
                     </h3>
-                    <div className="mt-6 pt-6 border-t border-stone-50 flex items-center justify-between">
+                    <div className="mt-6 pt-6 border-t border-stone-200 flex items-center justify-between">
                       <span className="text-xs font-bold text-stone-500">Fondo Inicial: $5.000</span>
                       <span className="text-xs font-bold text-green-500">Ventas: +${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}</span>
                     </div>
                   </div>
-                  <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm">
+                  <div className="bg-white p-8 rounded-[32px] border border-stone-200 shadow-sm">
                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Otros Medios</p>
                     <h3 className="text-4xl font-black text-stone-900">
                       ${(stats.salesByPayment || []).filter((p: any) => p.type !== 'Efectivo').reduce((acc: number, p: any) => acc + p.total, 0)}
                     </h3>
-                    <div className="mt-6 pt-6 border-t border-stone-50 flex items-center justify-between">
+                    <div className="mt-6 pt-6 border-t border-stone-200 flex items-center justify-between">
                       <span className="text-xs font-bold text-stone-500">Tarjetas/Transferencias</span>
                     </div>
                   </div>

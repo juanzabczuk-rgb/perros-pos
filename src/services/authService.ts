@@ -1,13 +1,10 @@
 import { 
-  onAuthStateChanged, 
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
   sendPasswordResetEmail,
-  User as FirebaseUser
+  User as FirebaseUser,
+  signOut
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import bcrypt from 'bcryptjs';
@@ -15,12 +12,6 @@ import { auth, db } from '../firebase';
 import { User } from '../types';
 
 export const authService = {
-  loginWithGoogle: async () => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    return result.user;
-  },
-
   loginWithEmail: async (email: string, pass: string) => {
     const result = await signInWithEmailAndPassword(auth, email, pass);
     return result.user;

@@ -85,19 +85,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'empleados'), (snapshot) => {
-      setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-      setIsFirstUser(snapshot.empty);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
-    return () => unsub();
-  }, []);
+    if (!isAuthReady) return;
+
+    if (auth.currentUser) {
+      const unsub = onSnapshot(collection(db, 'empleados'), (snapshot) => {
+        setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+        setIsFirstUser(snapshot.empty);
+      }, (err) => {
+        if (err.code !== 'permission-denied') {
+          handleFirestoreError(err, OperationType.LIST, 'empleados');
+        }
+      });
+      return () => unsub();
+    } else {
+      // If not logged in, we can't check isFirstUser with current rules.
+      // We'll assume false and let the user click "Register" manually if needed.
+      setAllUsers([]);
+      setIsFirstUser(false);
+    }
+  }, [isAuthReady, auth.currentUser]);
 
   useEffect(() => {
+    if (!auth.currentUser) {
+      setRolePermissions([]);
+      return;
+    }
+
     const unsub = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
       setRolePermissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RolePermission)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'role_permissions'));
+    }, (err) => {
+      if (err.code !== 'permission-denied') {
+        handleFirestoreError(err, OperationType.LIST, 'role_permissions');
+      }
+    });
     return () => unsub();
-  }, []);
+  }, [auth.currentUser]);
 
   useEffect(() => {
     if (user?.branch_id) {
@@ -105,7 +127,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (doc.exists()) {
           setBranch({ id: doc.id, ...doc.data() } as Branch);
         }
-      }, (err) => handleFirestoreError(err, OperationType.GET, `branches/${user.branch_id}`));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.GET, `branches/${user.branch_id}`);
+      });
       return () => unsub();
     }
   }, [user?.branch_id]);
@@ -123,7 +148,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           setShift(null);
         }
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'shifts'));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'shifts');
+      });
       return () => unsub();
     }
   }, [user?.branch_id]);
