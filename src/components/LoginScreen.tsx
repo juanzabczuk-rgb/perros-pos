@@ -11,7 +11,7 @@ interface LoginScreenProps {
   isFirstUser: boolean;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ 
+export const LoginScreen: React.FC<LoginScreenProps> = ({ 
   onGoogleLogin, 
   onEmailPasswordLogin, 
   onRegister, 
@@ -244,5 +244,3 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
     </div>
   );
 };
-
-export default LoginScreen;

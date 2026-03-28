@@ -73,8 +73,6 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
     const data = Object.fromEntries(formData.entries());
     const pin = formData.get('pin') as string;
 
-    console.log('Saving user. PIN provided:', !!pin, 'Length:', pin?.length);
-
     try {
       const branchName = branches.find(b => b.id === data.branch_id)?.name || 'Sucursal';
       const email = data.email as string;
@@ -92,17 +90,14 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
         
         // Only update PIN if a new one was entered
         if (pin && pin.length >= 4) {
-          console.log('Hashing new PIN for update...');
           updateData.pin = await bcrypt.hash(pin, 10);
         }
         
-        console.log('Updating user doc:', editingUser.id, updateData);
         await updateDoc(doc(db, 'empleados', editingUser.id), updateData);
         setEditingUser(null);
       } else {
         let hashedPin = '';
         if (pin && pin.length >= 4) {
-          console.log('Hashing new PIN for create...');
           hashedPin = await bcrypt.hash(pin, 10);
         }
         
@@ -114,7 +109,6 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
         };
         if (!email) delete newUser.email;
 
-        console.log('Creating new user doc:', userId, newUser);
         await setDoc(doc(db, 'empleados', userId), newUser);
       }
       setShowAdd(false);

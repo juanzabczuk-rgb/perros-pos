@@ -68,12 +68,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userDoc = await getDoc(doc(db, 'empleados', firebaseUser.uid));
           if (userDoc.exists()) {
-            setUser({ id: userDoc.id, uid: firebaseUser.uid, ...userDoc.data() } as User);
+            setUser({ id: userDoc.id, ...userDoc.data() } as User);
           }
         } catch (err) {
-          handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+          handleFirestoreError(err, OperationType.GET, `empleados/${firebaseUser.uid}`);
         }
       } else {
         setUser(null);
@@ -85,10 +85,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'empleados'), (snapshot) => {
       setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
       setIsFirstUser(snapshot.empty);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'empleados'));
     return () => unsub();
   }, []);
 

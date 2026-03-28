@@ -10,6 +10,7 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import bcrypt from 'bcryptjs';
 import { auth, db } from '../firebase';
 import { User } from '../types';
 
@@ -66,7 +67,8 @@ export const authService = {
     const userDoc = await getDoc(doc(db, 'empleados', userId));
     if (userDoc.exists()) {
       const data = userDoc.data();
-      return data.pin === pin;
+      if (!data.pin) return true; // Si no tiene PIN, entra directo
+      return await bcrypt.compare(pin, data.pin);
     }
     return false;
   }
