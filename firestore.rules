@@ -38,11 +38,19 @@ service cloud.firestore {
 
     // Empleados collection
     match /empleados/{userId} {
-      allow read: if isAuthenticated(); // Allow listing operators for selection
+      // Allow reading basic info for selection, but restrict full access
+      allow read: if isAuthenticated(); 
+      
+      // Only admins or the owner can create/update employees
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    (request.auth.uid == userId || isOwnerOrAdmin());
+                    (isOwnerOrAdmin());
+      
+      // Prevent non-admins from changing their own role or other sensitive fields
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
-                    (isOwnerOrAdmin() || (request.auth.uid == userId && request.resource.data.role == resource.data.role));
+                    (isOwnerOrAdmin() || (request.auth.uid == userId && 
+                     request.resource.data.role == resource.data.role &&
+                     (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['pin', 'role', 'branch_id']))));
+      
       allow delete: if isOwnerOrAdmin();
     }
 

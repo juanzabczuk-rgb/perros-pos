@@ -1,0 +1,152 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { User, PrinterSettings, TicketSettings, RolePermission, Branch, Shift } from '../types';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, onSnapshot, query, where, doc, getDoc } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+
+export interface AppContextType {
+  user: User | null;
+  setUser: (u: User | null) => void;
+  allUsers: User[];
+  branch: Branch | null;
+  setBranch: (b: Branch | null) => void;
+  shift: Shift | null;
+  setShift: (s: Shift | null) => void;
+  onOpenCloseShift: () => void;
+  printerSettings: PrinterSettings;
+  setPrinterSettings: (s: PrinterSettings) => void;
+  ticketSettings: TicketSettings;
+  setTicketSettings: (s: TicketSettings) => void;
+  shiftTolerance: number;
+  setShiftTolerance: (t: number) => void;
+  activeOperator: User | null;
+  setActiveOperator: (u: User | null) => void;
+  isAuthReady: boolean;
+  rolePermissions: RolePermission[];
+  isFirstUser: boolean;
+  showShiftModal: boolean;
+  setShowShiftModal: (s: boolean) => void;
+}
+
+export const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useApp must be used within AppProvider');
+  return context;
+};
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [branch, setBranch] = useState<Branch | null>(null);
+  const [shift, setShift] = useState<Shift | null>(null);
+  const [activeOperator, setActiveOperator] = useState<User | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
+  const [isFirstUser, setIsFirstUser] = useState(false);
+  const [showShiftModal, setShowShiftModal] = useState(false);
+
+  const [printerSettings, setPrinterSettings] = useState<PrinterSettings>({
+    type: 'network',
+    address: '',
+    paperWidth: '80mm'
+  });
+
+  const [ticketSettings, setTicketSettings] = useState<TicketSettings>({
+    header: 'PANCHERIA PRO',
+    footer: '¡Gracias por su compra!',
+    showLogo: true,
+    showAddress: true,
+    showPhone: true
+  });
+
+  const [shiftTolerance, setShiftTolerance] = useState(5);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser({ id: userDoc.id, uid: firebaseUser.uid, ...userDoc.data() } as User);
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
+        }
+      } else {
+        setUser(null);
+        setActiveOperator(null);
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+      setIsFirstUser(snapshot.empty);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
+      setRolePermissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RolePermission)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'role_permissions'));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (user?.branch_id) {
+      const unsub = onSnapshot(doc(db, 'branches', user.branch_id), (doc) => {
+        if (doc.exists()) {
+          setBranch({ id: doc.id, ...doc.data() } as Branch);
+        }
+      }, (err) => handleFirestoreError(err, OperationType.GET, `branches/${user.branch_id}`));
+      return () => unsub();
+    }
+  }, [user?.branch_id]);
+
+  useEffect(() => {
+    if (user?.branch_id) {
+      const q = query(
+        collection(db, 'shifts'), 
+        where('branch_id', '==', user.branch_id), 
+        where('status', '==', 'open')
+      );
+      const unsub = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          setShift({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Shift);
+        } else {
+          setShift(null);
+        }
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'shifts'));
+      return () => unsub();
+    }
+  }, [user?.branch_id]);
+
+  const onOpenCloseShift = () => setShowShiftModal(true);
+
+  return (
+    <AppContext.Provider value={{
+      user, setUser,
+      allUsers,
+      branch, setBranch,
+      shift, setShift,
+      onOpenCloseShift,
+      printerSettings, setPrinterSettings,
+      ticketSettings, setTicketSettings,
+      shiftTolerance, setShiftTolerance,
+      activeOperator, setActiveOperator,
+      isAuthReady,
+      rolePermissions,
+      isFirstUser,
+      showShiftModal, setShowShiftModal
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+};
