@@ -1,20 +1,22 @@
 {
-  "name": "pancheria-pos",
+  "name": "perros-pos",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/juanzabczuk-rgb/https-github.com-pancheria-pos.git"
+    "url": "https://github.com/juanzabczuk-rgb/perros-pos.git"
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:vite --external:firebase-admin --external:bcryptjs --external:express",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:vite --external:firebase-admin --external:bcryptjs --external:express",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{js,ts,tsx,json,md}\"",
-    "test": "jest"
+    "test": "jest",
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -39,6 +41,7 @@
     "@typescript-eslint/eslint-plugin": "^8.57.2",
     "@typescript-eslint/parser": "^8.57.2",
     "autoprefixer": "^10.4.21",
+    "esbuild": "^0.27.4",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
