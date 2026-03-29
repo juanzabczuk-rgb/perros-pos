@@ -31,10 +31,10 @@ import bcrypt from 'bcryptjs';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
-import { User, RolePermission, Branch, Shift } from '../types';
+import { User, Branch, Shift } from '../types';
 
-export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
-  const { user } = useApp();
+export const StaffModule = () => {
+  const { user, rolePermissions } = useApp();
   const [users, setUsers] = useState<User[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -332,7 +332,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
               </div>
               <div className="p-8 overflow-y-auto noscrollbar space-y-8">
                 {['owner', 'admin', 'seller'].map(roleId => {
-                  const currentPerms = rolePermissions.find(rp => rp.id === roleId)?.modules || [];
+                  const currentPerms = (rolePermissions || []).find(rp => rp.id === roleId)?.modules || [];
                   const modules = [
                     { id: 'ventas', label: 'Ventas', icon: DollarSign },
                     { id: 'inventario', label: 'Inventario', icon: Package },
