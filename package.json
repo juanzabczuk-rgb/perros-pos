@@ -9,8 +9,8 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:vite --external:firebase-admin --external:bcryptjs --external:express",
-    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:vite --external:firebase-admin --external:bcryptjs --external:express",
+    "build": "vite build && npm run build:server",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:firebase-admin --external:bcryptjs --external:express --external:vite",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "eslint .",

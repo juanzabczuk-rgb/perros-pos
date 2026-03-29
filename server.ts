@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -20,12 +19,32 @@ try {
     firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   }
 
-  // Initialize with default credentials - most reliable in Cloud Run
+  // Initialize with default credentials - most reliable in Cloud Run/Vercel
   if (!admin.apps.length) {
-    console.log(`Initializing Firebase Admin with project ID: ${firebaseConfig.projectId}`);
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId
-    });
+    console.log(`Initializing Firebase Admin...`);
+    
+    // If we have a service account in env, use it. Otherwise use ADC.
+    const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (serviceAccountVar) {
+      try {
+        const serviceAccount = JSON.parse(serviceAccountVar);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          databaseId: firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' 
+            ? firebaseConfig.firestoreDatabaseId 
+            : undefined
+        });
+      } catch (e) {
+        console.error("Error parsing FIREBASE_SERVICE_ACCOUNT env var:", e);
+        admin.initializeApp({
+          projectId: firebaseConfig.projectId
+        });
+      }
+    } else {
+      admin.initializeApp({
+        projectId: firebaseConfig.projectId
+      });
+    }
   }
   
   // Use the database ID from config if available
@@ -41,7 +60,7 @@ try {
   console.log(`Database ID: ${databaseId || '(default)'}`);
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
-  process.exit(1);
+  // Don't exit immediately, allow server to start so health checks pass
 }
 
 async function startServer() {
@@ -61,6 +80,10 @@ async function startServer() {
 
     if (!operatorId || !pin) {
       return res.status(400).json({ error: "Faltan datos" });
+    }
+
+    if (!db) {
+      return res.status(500).json({ error: "Base de datos no inicializada" });
     }
 
     try {
@@ -94,11 +117,16 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Failed to load Vite server:", e);
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
