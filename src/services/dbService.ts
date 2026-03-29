@@ -2,49 +2,20 @@ import {
   collection, 
   doc, 
   addDoc, 
-  setDoc, 
   updateDoc, 
-  deleteDoc, 
-  getDoc, 
   getDocs, 
   onSnapshot, 
   query, 
-  where, 
-  orderBy, 
-  limit, 
   runTransaction, 
   serverTimestamp,
-  DocumentReference,
-  Timestamp
+  DocumentReference
 } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { User, Product, Customer, CartItem, Sale, Branch, Shift, CashMovement } from '../types';
-
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-export const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-};
+import { db } from '../firebase';
+import { User, Customer, CartItem } from '../types';
+import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 
 // --- Shifts ---
-export const openShift = async (user: User, operator: User, initialCash: number, notes: string) => {
+export const openShift = async (user: User, operator: User, initialCash: number, notes: string): Promise<string | undefined> => {
   try {
     const docRef = await addDoc(collection(db, 'shifts'), {
       user_id: operator.id,
@@ -60,10 +31,11 @@ export const openShift = async (user: User, operator: User, initialCash: number,
     return docRef.id;
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, 'shifts');
+    return undefined;
   }
 };
 
-export const closeShift = async (shiftId: string, realCash: number, expectedCash: number, notes: string) => {
+export const closeShift = async (shiftId: string, realCash: number, expectedCash: number, notes: string): Promise<void> => {
   try {
     await updateDoc(doc(db, 'shifts', shiftId), {
       end_time: serverTimestamp(),
@@ -78,7 +50,7 @@ export const closeShift = async (shiftId: string, realCash: number, expectedCash
 };
 
 // --- Sales ---
-export const createSale = async (user: User, shiftId: string, cart: CartItem[], total: number, paymentType: string, customer: Customer | null) => {
+export const createSale = async (user: User, shiftId: string, cart: CartItem[], total: number, paymentType: string, customer: Customer | null): Promise<string | undefined> => {
   try {
     const saleId = doc(collection(db, 'sales')).id;
     const saleRef = doc(db, 'sales', saleId);
@@ -139,7 +111,7 @@ export const createSale = async (user: User, shiftId: string, cart: CartItem[], 
       for (let i = 0; i < stockRefs.length; i++) {
         const s = stockRefs[i];
         const snap = stockSnaps[i];
-        const currentQty = snap.exists() ? (snap.data() as any).quantity : 0;
+        const currentQty = snap.exists() ? (snap.data() as { quantity: number }).quantity : 0;
         transaction.set(s.ref, { 
           quantity: currentQty - s.qty,
           lastUpdated: serverTimestamp()
@@ -149,7 +121,7 @@ export const createSale = async (user: User, shiftId: string, cart: CartItem[], 
       if (customerRef && customerSnap?.exists()) {
         const pointsToAdd = Math.floor(total / 100);
         transaction.update(customerRef, { 
-          points: (customerSnap.data().points || 0) + pointsToAdd 
+          points: ((customerSnap.data() as Customer).points || 0) + pointsToAdd 
         });
       }
     });
@@ -157,22 +129,24 @@ export const createSale = async (user: User, shiftId: string, cart: CartItem[], 
     return saleId;
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, 'sales');
+    return undefined;
   }
 };
 
 // --- Generic Helpers ---
-export const getCollection = async (collectionName: string) => {
+export const getCollection = async <T extends { id: string }>(collectionName: string): Promise<T[] | undefined> => {
   try {
     const snap = await getDocs(collection(db, collectionName));
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, collectionName);
+    return undefined;
   }
 };
 
-export const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
+export const subscribeToCollection = <T extends { id: string }>(collectionName: string, callback: (_data: T[]) => void) => {
   const q = query(collection(db, collectionName));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    callback(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as T)));
   }, (err) => handleFirestoreError(err, OperationType.LIST, collectionName));
 };

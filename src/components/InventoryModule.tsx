@@ -17,10 +17,7 @@ import {
   Package, 
   Edit2, 
   Trash2, 
-  ChevronDown, 
-  ChevronUp, 
   Plus, 
-  Minus, 
   X, 
   Image as ImageIcon, 
   Upload,
@@ -30,13 +27,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
-import { Product, Branch, ProductComponent } from '../types';
+import { Product, Branch, ProductComponent, Category, StockItem, Discount } from '../types';
 
 export const InventoryModule = () => {
   const { user } = useApp();
   const [products, setProducts] = useState<Product[]>([]);
-  const [stock, setStock] = useState<any[]>([]);
-  const [discounts, setDiscounts] = useState<any[]>([]);
+  const [stock, setStock] = useState<StockItem[]>([]);
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [activeTab, setActiveTab] = useState<'products' | 'discounts'>('products');
   const [selectedBranchId, setSelectedBranchId] = useState(user?.branch_id || '');
@@ -44,77 +41,97 @@ export const InventoryModule = () => {
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showAddDiscount, setShowAddDiscount] = useState(false);
-  const [editingDiscount, setEditingDiscount] = useState<any | null>(null);
-  const [deletingDiscount, setDeletingDiscount] = useState<any | null>(null);
+  const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
+  const [deletingDiscount, setDeletingDiscount] = useState<Discount | null>(null);
   const [isComposite, setIsComposite] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<ProductComponent[]>([]);
-  const [adjustingStock, setAdjustingStock] = useState<any | null>(null);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [adjustingStock, setAdjustingStock] = useState<(Product & { quantity: number }) | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [showCategories, setShowCategories] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
-      const cats = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-      setCategories(cats);
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'categories');
-    });
+    let unsubCategories: (() => void) | undefined;
+    if (user) {
+      unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
+        const cats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Category));
+        setCategories(cats);
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'categories');
+      });
+    }
 
-    return () => unsubCategories();
+    return () => {
+      unsubCategories?.();
+    };
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'products');
-    });
+    let unsubProducts: (() => void) | undefined;
+    if (user) {
+      unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+        setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'products');
+      });
+    }
 
-    return () => unsubProducts();
+    return () => {
+      unsubProducts?.();
+    };
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
-      setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'branches');
-    });
+    let unsubBranches: (() => void) | undefined;
+    if (user) {
+      unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
+        setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'branches');
+      });
+    }
 
-    return () => unsubBranches();
+    return () => {
+      unsubBranches?.();
+    };
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsubDiscounts = onSnapshot(collection(db, 'discounts'), (snapshot) => {
-      setDiscounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'discounts');
-    });
+    let unsubDiscounts: (() => void) | undefined;
+    if (user) {
+      unsubDiscounts = onSnapshot(collection(db, 'discounts'), (snapshot) => {
+        setDiscounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Discount)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'discounts');
+      });
+    }
 
-    return () => unsubDiscounts();
+    return () => {
+      unsubDiscounts?.();
+    };
   }, [user]);
 
   useEffect(() => {
-    if (!user || !selectedBranchId) return;
-    const q = query(collection(db, 'branches', selectedBranchId, 'stock'));
-    const unsubStock = onSnapshot(q, (snapshot) => {
-      setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, `branches/${selectedBranchId}/stock`);
-    });
-    return () => unsubStock();
+    let unsubStock: (() => void) | undefined;
+    if (user && selectedBranchId) {
+      const q = query(collection(db, 'branches', selectedBranchId, 'stock'));
+      unsubStock = onSnapshot(q, (snapshot) => {
+        setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, `branches/${selectedBranchId}/stock`);
+      });
+    }
+    return () => {
+      unsubStock?.();
+    };
   }, [user, selectedBranchId]);
 
   useEffect(() => {
@@ -146,12 +163,12 @@ export const InventoryModule = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const data: any = Object.fromEntries(formData.entries());
+    const data = Object.fromEntries(formData.entries()) as unknown as Partial<Product> & { initial_stock?: string };
     
     data.is_composite = isComposite;
     data.components = isComposite ? selectedComponents : [];
-    data.cost = parseFloat(data.cost);
-    data.price = parseFloat(data.price);
+    data.cost = parseFloat(data.cost as unknown as string);
+    data.price = parseFloat(data.price as unknown as string);
     if (imagePreview) {
       data.image_url = imagePreview;
     }
@@ -275,9 +292,9 @@ export const InventoryModule = () => {
     setSelectedComponents(selectedComponents.filter((_, i) => i !== index));
   };
 
-  const updateComponent = (index: number, field: keyof ProductComponent, value: any) => {
+  const updateComponent = (index: number, field: keyof ProductComponent, value: string | number) => {
     const newComps = [...selectedComponents];
-    newComps[index] = { ...newComps[index], [field]: value };
+    newComps[index] = { ...newComps[index], [field]: value } as ProductComponent;
     setSelectedComponents(newComps);
   };
 

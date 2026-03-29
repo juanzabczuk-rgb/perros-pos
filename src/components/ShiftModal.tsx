@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { Shift } from '../types';
 
 export const ShiftModal = () => {
   const { shift, setShift, user, showShiftModal, setShowShiftModal } = useApp();
@@ -27,7 +28,18 @@ export const ShiftModal = () => {
         status: 'open',
         notes: notes
       });
-      setShift({ id: shiftRef.id, branch_id: user.branch_id, user_id: user.id, user_name: user.name, initial_cash: initialCash, expected_cash: initialCash, real_cash: 0, status: 'open', notes: notes } as any);
+      setShift({ 
+        id: shiftRef.id, 
+        branch_id: user.branch_id, 
+        user_id: user.id, 
+        user_name: user.name, 
+        initial_cash: initialCash, 
+        expected_cash: initialCash, 
+        real_cash: 0, 
+        status: 'open', 
+        notes: notes,
+        start_time: new Date()
+      } as Shift);
       setShowShiftModal(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'shifts');

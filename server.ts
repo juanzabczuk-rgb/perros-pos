@@ -1,19 +1,15 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
 let db: admin.firestore.Firestore;
 
 try {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  let firebaseConfig: any = {};
+  let firebaseConfig: Record<string, unknown> = {};
   
   if (fs.existsSync(configPath)) {
     firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -30,26 +26,26 @@ try {
         const serviceAccount = JSON.parse(serviceAccountVar);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
-          databaseId: firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' 
-            ? firebaseConfig.firestoreDatabaseId 
+          databaseId: (firebaseConfig.firestoreDatabaseId as string) && (firebaseConfig.firestoreDatabaseId as string) !== '(default)' 
+            ? (firebaseConfig.firestoreDatabaseId as string) 
             : undefined
         });
       } catch (e) {
         console.error("Error parsing FIREBASE_SERVICE_ACCOUNT env var:", e);
         admin.initializeApp({
-          projectId: firebaseConfig.projectId
+          projectId: firebaseConfig.projectId as string
         });
       }
     } else {
       admin.initializeApp({
-        projectId: firebaseConfig.projectId
+        projectId: firebaseConfig.projectId as string
       });
     }
   }
   
   // Use the database ID from config if available
-  const databaseId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' 
-    ? firebaseConfig.firestoreDatabaseId 
+  const databaseId = (firebaseConfig.firestoreDatabaseId as string) && (firebaseConfig.firestoreDatabaseId as string) !== '(default)' 
+    ? (firebaseConfig.firestoreDatabaseId as string) 
     : undefined;
 
   // @ts-expect-error - databaseId is supported in newer versions of firebase-admin
@@ -104,7 +100,8 @@ async function startServer() {
 
       if (isMatch) {
         // Return success and operator data (excluding sensitive info)
-        const { pin: _, ...safeData } = operatorData;
+        const safeData = { ...operatorData };
+        delete (safeData as { pin?: string }).pin;
         return res.json({ success: true, operator: { id: operatorDoc.id, ...safeData } });
       } else {
         return res.status(401).json({ error: "PIN incorrecto" });

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppProvider, useApp } from './context/AppContext';
 import { authService } from './services/authService';
+import { auth } from './firebase';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
@@ -64,7 +65,7 @@ const App = () => {
           await authService.loginWithEmail(email, pass);
         }}
         onRegister={async (email, pass) => {
-          const firebaseUser = await authService.registerWithEmail(email, pass);
+          await authService.registerWithEmail(email, pass);
           // The AppContext will detect the new auth state and update isFirstUser
           // If it's the first user, the block above will handle it.
         }}
@@ -142,8 +143,10 @@ const App = () => {
 
 export default function AppWrapper() {
   return (
-    <AppProvider>
-      <App />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <App />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

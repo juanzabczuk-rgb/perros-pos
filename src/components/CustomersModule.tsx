@@ -5,7 +5,6 @@ import {
   addDoc 
 } from 'firebase/firestore';
 import { 
-  Users, 
   PlusCircle, 
   UserCircle, 
   Edit, 
@@ -27,14 +26,18 @@ export const CustomersModule = () => {
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'customers');
-    });
-    return () => unsub();
+    let unsub: (() => void) | undefined;
+    if (user) {
+      unsub = onSnapshot(collection(db, 'customers'), (snapshot) => {
+        setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'customers');
+      });
+    }
+    return () => {
+      unsub?.();
+    };
   }, [user]);
 
   const handleAdd = async (e: React.FormEvent) => {

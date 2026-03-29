@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper functions
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -37,27 +39,45 @@ service cloud.firestore {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
     // Domain Validators
+    // ===============================================================
     function isValidUser(data) {
-      return data.keys().hasAll(['name', 'role', 'branch_id']) &&
+      return hasRequiredFields(data, ['name', 'role', 'branch_id']) &&
              validString(data.name, 1, 100) &&
-             (data.get('email', '') == '' || isValidEmail(data.email)) &&
-             data.role in ['owner', 'admin', 'seller'];
+             (!('email' in data) || isValidEmail(data.email)) &&
+             data.role in ['owner', 'admin', 'seller'] &&
+             validString(data.branch_id, 1, 50);
     }
 
     function isValidProduct(data) {
-      return data.keys().hasAll(['name', 'sku', 'category', 'cost', 'price']) &&
+      return hasRequiredFields(data, ['name', 'sku', 'category', 'cost', 'price']) &&
              validString(data.name, 1, 200) &&
              validString(data.sku, 1, 50) &&
              data.cost is number && data.cost >= 0 &&
-             data.price is number && data.price >= 0;
+             data.price is number && data.price >= 0 &&
+             validString(data.category, 1, 100);
     }
 
     function isValidSale(data) {
-      return data.keys().hasAll(['branch_id', 'user_id', 'total', 'payment_type', 'status']) &&
+      return hasRequiredFields(data, ['branch_id', 'user_id', 'total', 'payment_type', 'status']) &&
              data.total is number && data.total >= 0 &&
-             data.status in ['completed', 'refunded'];
+             data.status in ['completed', 'refunded'] &&
+             validString(data.branch_id, 1, 50) &&
+             validString(data.user_id, 1, 50);
     }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
 
     // Empleados collection
     match /empleados/{userId} {
@@ -95,7 +115,10 @@ service cloud.firestore {
     // Customers
     match /customers/{customerId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
+      allow create, update: if isAuthenticated() && 
+                            hasRequiredFields(request.resource.data, ['first_name', 'last_name', 'dni']) &&
+                            validString(request.resource.data.first_name, 1, 100) &&
+                            validString(request.resource.data.last_name, 1, 100);
       allow delete: if isOwnerOrAdmin();
     }
 
@@ -110,12 +133,16 @@ service cloud.firestore {
     // Shifts and Cash Movements
     match /shifts/{shiftId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
+      allow create, update: if isAuthenticated() && 
+                            hasRequiredFields(request.resource.data, ['user_id', 'branch_id', 'status']) &&
+                            request.resource.data.status in ['open', 'closed'];
       allow delete: if isOwnerOrAdmin();
     }
     match /cash_movements/{movementId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
+      allow create, update: if isAuthenticated() && 
+                            hasRequiredFields(request.resource.data, ['shift_id', 'type', 'amount']) &&
+                            request.resource.data.type in ['income', 'expense'];
       allow delete: if isOwnerOrAdmin();
     }
 

@@ -1,4 +1,5 @@
 import { auth } from '../firebase';
+import { CartItem } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -48,10 +49,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // In a real app, you might want to show a toast or notification here
-  // throw new Error(JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
-export const calcularTotal = (cart: any[]) => {
+export const calcularTotal = (cart: CartItem[]) => {
   return cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 };

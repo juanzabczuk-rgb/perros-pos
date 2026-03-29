@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   collection, 
   onSnapshot, 
@@ -36,10 +36,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType, calcularTotal } from '../lib/firestoreUtils';
-import { Product, CartItem, Customer, Branch, CashMovement } from '../types';
+import { Product, CartItem, Customer, CashMovement, Sale, SaleItem, ShiftSummary } from '../types';
 
 export const VentasModule = () => {
-  const { user, shift, ticketSettings, onOpenCloseShift } = useApp();
+  const { user, shift, onOpenCloseShift } = useApp();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
@@ -48,27 +48,26 @@ export const VentasModule = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [salesHistory, setSalesHistory] = useState<any[]>([]);
+  const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
   const [showCaja, setShowCaja] = useState(false);
-  const [showRefundConfirm, setShowRefundConfirm] = useState<any | null>(null);
+  const [showRefundConfirm, setShowRefundConfirm] = useState<Sale | null>(null);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [showMovementModal, setShowMovementModal] = useState<'income' | 'expense' | null>(null);
   const [selectingForProduct, setSelectingForProduct] = useState<{ product: Product, componentIndex: number, selections: { [key: string]: string } } | null>(null);
-  const [confirmingRefund, setConfirmingRefund] = useState<string | null>(null);
-  const [showPrintModal, setShowPrintModal] = useState<any | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState<Partial<Sale> | null>(null);
   const [searchHistory, setSearchHistory] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerType, setCustomerType] = useState<'final' | 'client'>('final');
 
-  const formatDate = (date: any) => {
+  const formatDate = (date: { toDate?: () => Date; seconds?: number } | Date | string | number | null) => {
     if (!date) return 'N/A';
     let d: Date;
-    if (date.toDate) {
+    if (typeof date === 'object' && 'toDate' in date && typeof date.toDate === 'function') {
       d = date.toDate();
-    } else if (date.seconds) {
+    } else if (typeof date === 'object' && 'seconds' in date && typeof date.seconds === 'number') {
       d = new Date(date.seconds * 1000);
     } else {
-      d = new Date(date);
+      d = new Date(date as string | number | Date);
     }
     
     if (isNaN(d.getTime())) return 'Fecha Inválida';
@@ -84,7 +83,7 @@ export const VentasModule = () => {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return () => {};
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }, (err) => {
@@ -106,17 +105,17 @@ export const VentasModule = () => {
   }, [user]);
 
   useEffect(() => {
-    if (!user?.branch_id) return;
+    if (!user?.branch_id) return () => {};
     const q = query(
       collection(db, 'sales'),
       where('branch_id', '==', user.branch_id),
       limit(100)
     );
     const unsubHistory = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
       docs.sort((a, b) => {
-        const dateA = a.created_at?.seconds || 0;
-        const dateB = b.created_at?.seconds || 0;
+        const dateA = (a.created_at as { seconds?: number })?.seconds || 0;
+        const dateB = (b.created_at as { seconds?: number })?.seconds || 0;
         return dateB - dateA;
       });
       setSalesHistory(docs.slice(0, 50));
@@ -128,7 +127,7 @@ export const VentasModule = () => {
   }, [user?.branch_id]);
 
   useEffect(() => {
-    if (!shift?.id) return;
+    if (!shift?.id) return () => {};
     const q = query(
       collection(db, 'cash_movements'),
       where('shift_id', '==', shift.id)
@@ -136,8 +135,8 @@ export const VentasModule = () => {
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashMovement));
       docs.sort((a, b) => {
-        const dateA = (a.created_at as any)?.seconds || 0;
-        const dateB = (b.created_at as any)?.seconds || 0;
+        const dateA = (a.created_at as { seconds?: number })?.seconds || 0;
+        const dateB = (b.created_at as { seconds?: number })?.seconds || 0;
         return dateB - dateA;
       });
       setMovements(docs);
@@ -155,26 +154,26 @@ export const VentasModule = () => {
         const saleSnap = await transaction.get(saleRef);
         if (!saleSnap.exists()) throw new Error("Venta no encontrada");
         
-        const saleData = saleSnap.data();
+        const saleData = saleSnap.data() as Sale;
         if (saleData.status === 'refunded') throw new Error("Venta ya reembolsada");
-
+ 
         let items = saleData.items || [];
         if (items.length === 0) {
           const itemsSnap = await getDocs(collection(db, `sales/${saleId}/items`));
-          items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() } as SaleItem));
         }
-
+ 
         if (items.length === 0) throw new Error("No se encontraron artículos en la venta");
-
-        const productRefs = items.map((item: any) => doc(db, 'products', item.product_id));
-        const productSnaps = await Promise.all(productRefs.map((ref: any) => transaction.get(ref)));
+ 
+        const productRefs = items.map((item) => doc(db, 'products', item.product_id));
+        const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
         
         const stockRefs: { ref: DocumentReference, qty: number }[] = [];
-
+ 
         for (let i = 0; i < items.length; i++) {
-          const item: any = items[i];
-          const product = productSnaps[i].data();
-
+          const item = items[i];
+          const product = productSnaps[i].data() as Product | undefined;
+ 
           if (product?.is_composite && product.components) {
             for (const comp of product.components) {
               let targetId = comp.id;
@@ -193,7 +192,7 @@ export const VentasModule = () => {
             });
           }
         }
-
+ 
         const stockSnaps = await Promise.all(stockRefs.map(s => transaction.get(s.ref)));
         
         let customerSnap = null;
@@ -202,30 +201,28 @@ export const VentasModule = () => {
           customerRef = doc(db, 'customers', saleData.customer_id);
           customerSnap = await transaction.get(customerRef);
         }
-
+ 
         transaction.update(saleRef, { status: 'refunded' });
-
+ 
         for (let i = 0; i < stockRefs.length; i++) {
           const s = stockRefs[i];
           const snap = stockSnaps[i];
-          const currentQty = snap.exists() ? (snap.data() as any).quantity : 0;
+          const currentQty = snap.exists() ? (snap.data() as { quantity: number }).quantity : 0;
           transaction.set(s.ref, { 
             quantity: currentQty + s.qty,
             lastUpdated: serverTimestamp()
           }, { merge: true });
         }
-
+ 
         if (customerRef && customerSnap?.exists()) {
           const pointsToSubtract = Math.floor(saleData.total / 100);
           transaction.update(customerRef, { 
-            points: Math.max(0, customerSnap.data().points - pointsToSubtract) 
+            points: Math.max(0, (customerSnap.data() as Customer).points - pointsToSubtract) 
           });
         }
       });
-      setConfirmingRefund(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `sales/${saleId}`);
-      setConfirmingRefund(null);
     }
   };
 
@@ -273,6 +270,7 @@ export const VentasModule = () => {
           user_id: user.id,
           user_name: user.name,
           customer_id: selectedCustomer?.id || null,
+          customer_name: selectedCustomer ? `${selectedCustomer.first_name} ${selectedCustomer.last_name}` : 'Consumidor Final',
           shift_id: shift.id,
           total,
           discount: 0,
@@ -288,21 +286,21 @@ export const VentasModule = () => {
             selections: item.selections || null
           }))
         });
-
+ 
         for (let i = 0; i < stockRefs.length; i++) {
           const s = stockRefs[i];
           const snap = stockSnaps[i];
-          const currentQty = snap.exists() ? (snap.data() as any).quantity : 0;
+          const currentQty = snap.exists() ? (snap.data() as { quantity: number }).quantity : 0;
           transaction.set(s.ref, { 
             quantity: currentQty - s.qty,
             lastUpdated: serverTimestamp()
           }, { merge: true });
         }
-
+ 
         if (customerRef && customerSnap?.exists()) {
           const pointsToAdd = Math.floor(total / 100);
           transaction.update(customerRef, { 
-            points: (customerSnap.data().points || 0) + pointsToAdd 
+            points: ((customerSnap.data() as Customer).points || 0) + pointsToAdd 
           });
         }
       });
@@ -1105,7 +1103,7 @@ export const VentasModule = () => {
   );
 };
 
-export const ShiftSummaryModal = ({ summary, onClose }: { summary: any, onClose: () => void }) => {
+export const ShiftSummaryModal = ({ summary, onClose }: { summary: ShiftSummary, onClose: () => void }) => {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 print:p-0">
       <motion.div 

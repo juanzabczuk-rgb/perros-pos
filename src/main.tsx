@@ -17,6 +17,7 @@ window.onerror = (message) => {
   if (message.toString().includes('WebSocket closed without opened')) {
     return true; // Suppress error
   }
+  return false;
 };
 
 createRoot(document.getElementById('root')!).render(

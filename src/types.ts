@@ -52,19 +52,29 @@ export interface CartItem extends Product {
   selections?: { [componentId: string]: string }; // componentId -> selectedProductId
 }
 
+export interface SaleItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  price: number;
+  selections?: { [key: string]: string } | null;
+}
+
 export interface Sale {
   id: string;
   branch_id: string;
   user_id: string;
   user_name: string;
-  customer_id?: string;
+  customer_id?: string | null;
+  customer_name?: string;
   shift_id: string;
   total: number;
   discount: number;
   payment_type: string;
-  created_at: any;
+  created_at: { seconds: number; nanoseconds: number } | string | Date;
   status: 'completed' | 'refunded';
-  items: any[];
+  items: SaleItem[];
 }
 
 export interface Branch {
@@ -80,12 +90,14 @@ export interface Shift {
   user_id: string;
   user_name?: string;
   branch_id: string;
-  start_time: any;
-  end_time?: any;
+  branch_name?: string;
+  start_time: { seconds: number; nanoseconds: number } | string | Date;
+  end_time?: { seconds: number; nanoseconds: number } | string | Date;
   initial_cash: number;
   expected_cash: number;
   real_cash?: number;
   final_cash?: number;
+  total_sales?: number;
   notes?: string;
   status: 'open' | 'closed';
 }
@@ -96,7 +108,7 @@ export interface CashMovement {
   type: 'income' | 'expense';
   amount: number;
   description: string;
-  created_at: any;
+  created_at: { seconds: number; nanoseconds: number } | string | Date;
 }
 
 export interface PrinterSettings {
@@ -112,4 +124,46 @@ export interface TicketSettings {
   printTicket: boolean;
   printComanda: boolean;
   printShiftClosing: boolean;
+}
+
+export interface ShiftSummary {
+  shift_id: string;
+  user_name: string;
+  start_time: { seconds: number; nanoseconds: number } | string | Date;
+  end_time: { seconds: number; nanoseconds: number } | string | Date;
+  initial_cash: number;
+  cash_sales: number;
+  refunds_cash: number;
+  movements_net: number;
+  theoretical_cash: number;
+  real_cash: number;
+  difference: number;
+  gross_sales: number;
+  total_refunds: number;
+  discounts: number;
+  net_sales: number;
+  card_sales: number;
+  qr_sales: number;
+  taxes: number;
+}
+
+export interface StockItem {
+  id: string;
+  quantity: number;
+  lastUpdated: { seconds: number; nanoseconds: number } | string | Date;
+}
+
+export interface Discount {
+  id: string;
+  name: string;
+  value: number;
+  type: 'percentage' | 'fixed';
+  enabled: boolean;
+}
+
+export interface Tax {
+  id: string;
+  name: string;
+  rate: number;
+  enabled: boolean;
 }

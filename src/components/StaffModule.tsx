@@ -14,39 +14,34 @@ import {
   Users, 
   PlusCircle, 
   Shield, 
-  Search, 
   Mail, 
-  Phone, 
   MapPin, 
   Trash2, 
-  Edit2, 
   X, 
-  ChevronRight, 
   Clock, 
   Calendar, 
   DollarSign, 
-  CheckCircle2, 
-  AlertCircle,
   TrendingUp,
   UserCircle,
-  Settings
+  Settings,
+  Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import bcrypt from 'bcryptjs';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
-import { User, RolePermission } from '../types';
+import { User, RolePermission, Branch, Shift } from '../types';
 
 export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermission[] }) => {
   const { user } = useApp();
   const [users, setUsers] = useState<User[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [userShifts, setUserShifts] = useState<any[]>([]);
+  const [userShifts, setUserShifts] = useState<Shift[]>([]);
   const [showShifts, setShowShifts] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
   
@@ -55,25 +50,28 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
-    if (!user || (user.role !== 'owner' && user.role !== 'admin')) return;
+    let unsubUsers: (() => void) | undefined;
+    let unsubBranches: (() => void) | undefined;
 
-    const unsubUsers = onSnapshot(collection(db, 'empleados'), (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'empleados');
-    });
+    if (user && (user.role === 'owner' || user.role === 'admin')) {
+      unsubUsers = onSnapshot(collection(db, 'empleados'), (snapshot) => {
+        setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'empleados');
+      });
 
-    const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
-      setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code === 'permission-denied') return;
-      handleFirestoreError(err, OperationType.LIST, 'branches');
-    });
+      unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
+        setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
+      }, (err) => {
+        if (err.code === 'permission-denied') return;
+        handleFirestoreError(err, OperationType.LIST, 'branches');
+      });
+    }
 
     return () => {
-      unsubUsers();
-      unsubBranches();
+      unsubUsers?.();
+      unsubBranches?.();
     };
   }, [user]);
 
@@ -89,10 +87,10 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
       const userId = email || `pin_${Date.now()}`;
       
       if (editingUser) {
-        const updateData: any = {
-          name: data.name,
-          role: data.role,
-          branch_id: data.branch_id,
+        const updateData: Partial<User> & { pin?: string } = {
+          name: data.name as string,
+          role: data.role as User['role'],
+          branch_id: data.branch_id as string,
           branch_name: branchName
         };
         
@@ -111,13 +109,16 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
           hashedPin = await bcrypt.hash(pin, 10);
         }
         
-        const newUser: any = {
-          ...data,
+        const newUser: User & { pin: string } = {
           id: userId,
+          name: data.name as string,
+          role: data.role as User['role'],
+          branch_id: data.branch_id as string,
+          email: email,
           pin: hashedPin,
           branch_name: branchName
         };
-        if (!email) delete newUser.email;
+        if (!newUser.email) delete (newUser as { email?: string }).email;
 
         await setDoc(doc(db, 'empleados', userId), newUser);
       }
@@ -151,11 +152,11 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
     // Remove orderBy from query to avoid composite index requirement
     const q = query(collection(db, 'shifts'), where('user_id', '==', user.id));
     const snapshot = await getDocs(q);
-    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+    const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Shift));
     // Sort in memory
     docs.sort((a, b) => {
-      const dateA = a.start_time?.seconds || 0;
-      const dateB = b.start_time?.seconds || 0;
+      const dateA = (a.start_time as { seconds?: number })?.seconds || 0;
+      const dateB = (b.start_time as { seconds?: number })?.seconds || 0;
       return dateB - dateA;
     });
     setUserShifts(docs);
@@ -171,7 +172,7 @@ export const StaffModule = ({ rolePermissions }: { rolePermissions: RolePermissi
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
       return date >= start && date <= end;
-    } catch (e) {
+    } catch {
       return false;
     }
   });

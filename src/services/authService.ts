@@ -47,7 +47,7 @@ export const authService = {
       branch_id: 'main',
       branch_name: 'Casa Central',
       active: true,
-      createdAt: serverTimestamp() as any
+      createdAt: serverTimestamp() as { seconds: number; nanoseconds: number }
     };
     
     await setDoc(doc(db, 'empleados', firebaseUser.uid), userData);

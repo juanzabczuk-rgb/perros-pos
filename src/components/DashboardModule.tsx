@@ -28,14 +28,26 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { Sale } from '../types';
+
+interface DashboardStats {
+  todaySales: number;
+  todayCount: number;
+  topProducts: { name: string; sold: number }[];
+  salesByEmployee: { name: string; total: number }[];
+  salesByPayment: { type: string; total: number }[];
+  totalDiscounts: number;
+  totalTaxes: number;
+  rawSales: Sale[];
+}
 
 export const DashboardModule = () => {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activeReport, setActiveReport] = useState('summary');
   const { user } = useApp();
 
   useEffect(() => {
-    if (!user?.branch_id) return;
+    if (!user?.branch_id) return () => {};
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -47,15 +59,15 @@ export const DashboardModule = () => {
 
     const unsub = onSnapshot(q, async (snapshot) => {
       const sales = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as any))
+        .map(doc => ({ id: doc.id, ...doc.data() } as Sale))
         .filter(s => s.branch_id === user.branch_id);
         
       const todaySales = sales.reduce((acc, s) => acc + (s.status === 'completed' ? s.total : 0), 0);
       
       // Fetch items for each sale to get product stats
-      const productsMap: any = {};
-      const employeeMap: any = {};
-      const paymentMap: any = {};
+      const productsMap: Record<string, number> = {};
+      const employeeMap: Record<string, number> = {};
+      const paymentMap: Record<string, number> = {};
       let totalDiscounts = 0;
       let totalTaxes = 0;
 
@@ -79,16 +91,16 @@ export const DashboardModule = () => {
             const item = itemDoc.data();
             productsMap[item.name] = (productsMap[item.name] || 0) + item.quantity;
           });
-        } catch (err: any) {
-          if (err.code !== 'permission-denied') {
+        } catch (err: unknown) {
+          if (err && typeof err === 'object' && 'code' in err && err.code !== 'permission-denied') {
             console.error("Error fetching sale items:", err);
           }
         }
       }
 
       const topProducts = Object.entries(productsMap)
-        .map(([name, sold]: any) => ({ name, sold }))
-        .sort((a: any, b: any) => b.sold - a.sold)
+        .map(([name, sold]) => ({ name, sold }))
+        .sort((a, b) => b.sold - a.sold)
         .slice(0, 12);
 
       setStats({
@@ -106,7 +118,9 @@ export const DashboardModule = () => {
       handleFirestoreError(err, OperationType.LIST, 'sales');
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, [user?.branch_id]);
 
   if (!stats) return (
@@ -240,7 +254,7 @@ export const DashboardModule = () => {
                   <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
                     <h3 className="text-xl font-black text-stone-900 mb-8 uppercase tracking-tight">Top Productos</h3>
                     <div className="space-y-6">
-                      {stats.topProducts.map((p: any, i: number) => (
+                      {stats.topProducts.map((p, i) => (
                         <div key={i} className="flex items-center justify-between group">
                           <div className="flex items-center gap-4">
                             <span className="w-8 h-8 flex items-center justify-center bg-stone-50 rounded-xl text-xs font-black text-stone-400 group-hover:bg-stone-900 group-hover:text-white transition-all">
@@ -266,7 +280,7 @@ export const DashboardModule = () => {
                   <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
                     <h3 className="text-xl font-black text-stone-900 mb-8 uppercase tracking-tight">Ventas por Empleado</h3>
                     <div className="space-y-6">
-                      {stats.salesByEmployee.map((e: any, i: number) => (
+                      {stats.salesByEmployee.map((e, i) => (
                         <div key={i} className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 bg-stone-50 rounded-2xl flex items-center justify-center">
@@ -287,7 +301,7 @@ export const DashboardModule = () => {
               <div className="space-y-6">
                 <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Top 12 de Ventas</h1>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {stats.topProducts.map((p: any, i: number) => (
+                  {stats.topProducts.map((p, i) => (
                     <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center text-white font-black">
@@ -308,7 +322,7 @@ export const DashboardModule = () => {
               <div className="space-y-6">
                 <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Tipo de Pago</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {stats.salesByPayment.map((p: any, i: number) => (
+                  {stats.salesByPayment.map((p, i) => (
                     <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-stone-50 rounded-2xl flex items-center justify-center">
@@ -333,17 +347,17 @@ export const DashboardModule = () => {
                   <div className="bg-white p-8 rounded-[32px] border border-stone-200 shadow-sm">
                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Efectivo en Caja</p>
                     <h3 className="text-4xl font-black text-stone-900">
-                      ${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}
+                      ${(stats.salesByPayment || []).find(p => p.type === 'Efectivo')?.total || 0}
                     </h3>
                     <div className="mt-6 pt-6 border-t border-stone-200 flex items-center justify-between">
                       <span className="text-xs font-bold text-stone-500">Fondo Inicial: $5.000</span>
-                      <span className="text-xs font-bold text-green-500">Ventas: +${(stats.salesByPayment || []).find((p: any) => p.type === 'Efectivo')?.total || 0}</span>
+                      <span className="text-xs font-bold text-green-500">Ventas: +${(stats.salesByPayment || []).find(p => p.type === 'Efectivo')?.total || 0}</span>
                     </div>
                   </div>
                   <div className="bg-white p-8 rounded-[32px] border border-stone-200 shadow-sm">
                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Otros Medios</p>
                     <h3 className="text-4xl font-black text-stone-900">
-                      ${(stats.salesByPayment || []).filter((p: any) => p.type !== 'Efectivo').reduce((acc: number, p: any) => acc + p.total, 0)}
+                      ${(stats.salesByPayment || []).filter(p => p.type !== 'Efectivo').reduce((acc, p) => acc + p.total, 0)}
                     </h3>
                     <div className="mt-6 pt-6 border-t border-stone-200 flex items-center justify-between">
                       <span className="text-xs font-bold text-stone-500">Tarjetas/Transferencias</span>

@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { UserCircle, Lock } from 'lucide-react';
 import { authService } from '../services/authService';
+import { User } from '../types';
 
 export const OperatorSelector = () => {
-  const { allUsers, setActiveOperator, user, setUser } = useApp();
-  const [selectedUserForPin, setSelectedUserForPin] = useState<any | null>(null);
+  const { allUsers, setActiveOperator, setUser } = useApp();
+  const [selectedUserForPin, setSelectedUserForPin] = useState<User | null>(null);
   const [operatorPinInput, setOperatorPinInput] = useState('');
   const [operatorPinError, setOperatorPinError] = useState(false);
 

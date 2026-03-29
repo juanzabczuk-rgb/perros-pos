@@ -16,7 +16,7 @@ import { authService } from '../services/authService';
 
 interface SidebarProps {
   activeTab: string;
-  setActiveTab: (t: string) => void;
+  setActiveTab: (_t: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
 }

@@ -85,7 +85,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady) return () => {};
 
     if (auth.currentUser) {
       const unsub = onSnapshot(collection(db, 'empleados'), (snapshot) => {
@@ -102,13 +102,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // We'll assume false and let the user click "Register" manually if needed.
       setAllUsers([]);
       setIsFirstUser(false);
+      return () => {};
     }
   }, [isAuthReady, auth.currentUser]);
 
   useEffect(() => {
     if (!auth.currentUser) {
       setRolePermissions([]);
-      return;
+      return () => {};
     }
 
     const unsub = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
@@ -133,6 +134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return () => unsub();
     }
+    return () => {};
   }, [user?.branch_id]);
 
   useEffect(() => {
@@ -154,6 +156,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return () => unsub();
     }
+    return () => {};
   }, [user?.branch_id]);
 
   const onOpenCloseShift = () => setShowShiftModal(true);

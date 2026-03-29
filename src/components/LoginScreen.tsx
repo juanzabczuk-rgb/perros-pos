@@ -37,8 +37,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setLoading(true);
       await sendPasswordResetEmail(auth, email);
       alert('Se ha enviado un correo para restablecer su contraseña.');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -59,21 +61,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           setMode('verify');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Login error:', err);
-      if (err.code === 'auth/invalid-credential') {
-        setError('Email o contraseña incorrectos. Por favor, verifica tus datos.');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('No se encontró una cuenta con este email.');
-      } else if (err.code === 'auth/wrong-password') {
-        setError('Contraseña incorrecta.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('Este email ya está registrado.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('La contraseña es muy débil.');
-      } else if (err.code === 'auth/network-request-failed') {
-        setError('Error de conexión. Por favor, verifica que el dominio esté autorizado en la consola de Firebase y que tengas conexión a internet.');
-      } else {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const authErr = err as { code: string; message?: string };
+        if (authErr.code === 'auth/invalid-credential') {
+          setError('Email o contraseña incorrectos. Por favor, verifica tus datos.');
+        } else if (authErr.code === 'auth/user-not-found') {
+          setError('No se encontró una cuenta con este email.');
+        } else if (authErr.code === 'auth/wrong-password') {
+          setError('Contraseña incorrecta.');
+        } else if (authErr.code === 'auth/email-already-in-use') {
+          setError('Este email ya está registrado.');
+        } else if (authErr.code === 'auth/weak-password') {
+          setError('La contraseña es muy débil.');
+        } else if (authErr.code === 'auth/network-request-failed') {
+          setError('Error de conexión. Por favor, verifica que el dominio esté autorizado en la consola de Firebase y que tengas conexión a internet.');
+        } else {
+          setError(authErr.message || 'Error en la autenticación');
+        }
+      } else if (err instanceof Error) {
         setError(err.message || 'Error en la autenticación');
       }
     } finally {
@@ -87,8 +94,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setLoading(true);
         await sendEmailVerification(auth.currentUser);
         alert('Correo de verificación reenviado.');
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          setError(err.message);
+        }
       } finally {
         setLoading(false);
       }

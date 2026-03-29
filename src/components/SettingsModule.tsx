@@ -19,8 +19,6 @@ import {
   Settings, 
   MapPin, 
   Phone, 
-  Mail, 
-  Globe, 
   X,
   CreditCard
 } from 'lucide-react';
@@ -28,31 +26,32 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { Branch, Tax } from '../types';
 
 export const SettingsModule = () => {
-  const [branches, setBranches] = useState<any[]>([]);
-  const [taxes, setTaxes] = useState<any[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [taxes, setTaxes] = useState<Tax[]>([]);
   const { user, printerSettings, setPrinterSettings, ticketSettings, setTicketSettings, shiftTolerance, setShiftTolerance } = useApp();
   const [activeSection, setActiveSection] = useState('branches');
   const [showAddBranch, setShowAddBranch] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<any | null>(null);
-  const [deletingBranch, setDeletingBranch] = useState<any | null>(null);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
   const [showAddTax, setShowAddTax] = useState(false);
-  const [editingTax, setEditingTax] = useState<any | null>(null);
-  const [deletingTax, setDeletingTax] = useState<any | null>(null);
+  const [editingTax, setEditingTax] = useState<Tax | null>(null);
+  const [deletingTax, setDeletingTax] = useState<Tax | null>(null);
   const [ticketLogoPreview, setTicketLogoPreview] = useState<string | null>(ticketSettings.logo || null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return () => {};
     const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
-      setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
     }, (err) => {
       if (err.code === 'permission-denied') return;
       handleFirestoreError(err, OperationType.LIST, 'branches');
     });
 
     const unsubTaxes = onSnapshot(collection(db, 'taxes'), (snapshot) => {
-      setTaxes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setTaxes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tax)));
     }, (err) => {
       if (err.code === 'permission-denied') return;
       handleFirestoreError(err, OperationType.LIST, 'taxes');
@@ -135,7 +134,7 @@ export const SettingsModule = () => {
     }
   };
 
-  const toggleTaxStatus = async (tax: any) => {
+  const toggleTaxStatus = async (tax: Tax) => {
     try {
       await updateDoc(doc(db, 'taxes', tax.id), {
         enabled: !tax.enabled
@@ -391,7 +390,7 @@ export const SettingsModule = () => {
                         {['58mm', '80mm'].map(width => (
                           <button
                             key={width}
-                            onClick={() => setPrinterSettings({ ...printerSettings, paperWidth: width as any })}
+                            onClick={() => setPrinterSettings({ ...printerSettings, paperWidth: width as '58mm' | '80mm' })}
                             className={`flex-1 py-4 rounded-2xl font-black text-xs transition-all uppercase tracking-widest ${
                               printerSettings.paperWidth === width 
                                 ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
