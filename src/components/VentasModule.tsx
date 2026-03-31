@@ -90,14 +90,14 @@ export const VentasModule = () => {
 
   useEffect(() => {
     if (!user) return () => {};
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubProducts = onSnapshot(query(collection(db, 'products'), limit(500)), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }, (err) => {
       if (err.code === 'permission-denied') return;
       handleFirestoreError(err, OperationType.LIST, 'products');
     });
 
-    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+    const unsubCustomers = onSnapshot(query(collection(db, 'customers'), limit(100)), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     }, (err) => {
       if (err.code === 'permission-denied') return;

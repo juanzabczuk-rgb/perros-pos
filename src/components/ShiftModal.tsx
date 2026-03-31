@@ -15,6 +15,38 @@ export const ShiftModal = () => {
   const [realCashInput, setRealCashInput] = useState('');
   const [notesInput, setNotesInput] = useState('');
 
+  // Pre-calculate theoretical cash to pre-fill realCashInput when closing a shift
+  React.useEffect(() => {
+    if (showShiftModal && shift && !summary && !loading && realCashInput === '') {
+      const preCalculate = async () => {
+        try {
+          const salesQuery = query(collection(db, 'sales'), where('shift_id', '==', shift.id));
+          const salesSnapshot = await getDocs(salesQuery);
+          const sales = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+          
+          const movementsQuery = query(collection(db, 'cash_movements'), where('shift_id', '==', shift.id));
+          const movementsSnapshot = await getDocs(movementsQuery);
+          const movements = movementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashMovement));
+          
+          const completedSales = sales.filter(s => s.status === 'completed');
+          const cashSales = completedSales.filter(s => s.payment_type === 'Efectivo').reduce((acc, s) => acc + (s.total || 0), 0);
+          const refundedSales = sales.filter(s => s.status === 'refunded');
+          const refundsCash = refundedSales.filter(s => s.payment_type === 'Efectivo').reduce((acc, s) => acc + (s.total || 0), 0);
+          
+          const totalIncome = movements.filter(m => m.type === 'income').reduce((acc, m) => acc + m.amount, 0);
+          const totalExpense = movements.filter(m => m.type === 'expense').reduce((acc, m) => acc + m.amount, 0);
+          const movementsNet = totalIncome - totalExpense;
+          
+          const theoreticalCash = (shift.initial_cash || 0) + cashSales - refundsCash + movementsNet;
+          setRealCashInput(theoreticalCash.toString());
+        } catch (err) {
+          console.error("Error pre-calculating theoretical cash:", err);
+        }
+      };
+      preCalculate();
+    }
+  }, [showShiftModal, shift, summary]);
+
   const handleOpenShift = async (e: React.FormEvent) => {
     e.preventDefault();
     const currentUser = activeOperator || user;
