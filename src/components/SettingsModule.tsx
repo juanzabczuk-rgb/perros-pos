@@ -5,7 +5,8 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  doc
+  doc,
+  setDoc
 } from 'firebase/firestore';
 import { 
   Store, 
@@ -16,15 +17,16 @@ import {
   Save, 
   Camera, 
   Clock, 
-  Settings, 
   MapPin, 
   Phone, 
   X,
-  CreditCard
+  CreditCard,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
+import { toast } from 'sonner';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 import { Branch, Tax } from '../types';
 
@@ -73,6 +75,7 @@ export const SettingsModule = () => {
       } else {
         await addDoc(collection(db, 'branches'), data);
       }
+      toast.success('Sucursal guardada');
       setShowAddBranch(false);
       setEditingBranch(null);
     } catch (err) {
@@ -84,6 +87,7 @@ export const SettingsModule = () => {
     if (!deletingBranch) return;
     try {
       await deleteDoc(doc(db, 'branches', deletingBranch.id));
+      toast.success('Sucursal eliminada');
       setDeletingBranch(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `branches/${deletingBranch.id}`);
@@ -104,6 +108,7 @@ export const SettingsModule = () => {
       } else {
         await addDoc(collection(db, 'taxes'), data);
       }
+      toast.success('Impuesto guardado');
       setShowAddTax(false);
       setEditingTax(null);
     } catch (err) {
@@ -115,6 +120,7 @@ export const SettingsModule = () => {
     if (!deletingTax) return;
     try {
       await deleteDoc(doc(db, 'taxes', deletingTax.id));
+      toast.success('Impuesto eliminado');
       setDeletingTax(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `taxes/${deletingTax.id}`);
@@ -139,8 +145,20 @@ export const SettingsModule = () => {
       await updateDoc(doc(db, 'taxes', tax.id), {
         enabled: !tax.enabled
       });
+      toast.success(`Impuesto ${!tax.enabled ? 'activado' : 'desactivado'}`);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `taxes/${tax.id}`);
+    }
+  };
+
+  const handleSaveSettings = async (section: string, data: Record<string, unknown>) => {
+    try {
+      await setDoc(doc(db, 'settings', 'global'), {
+        [section]: data
+      }, { merge: true });
+      toast.success('Configuración guardada');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `settings/global/${section}`);
     }
   };
 
@@ -151,7 +169,6 @@ export const SettingsModule = () => {
     { id: 'printer', label: 'Impresora', icon: Printer },
     { id: 'ticket', label: 'Ticket', icon: Save },
     { id: 'shifts', label: 'Turnos', icon: Clock },
-    { id: 'business', label: 'Negocio', icon: Settings },
   ];
 
   return (
@@ -238,6 +255,18 @@ export const SettingsModule = () => {
                           <div className="flex items-center gap-2 text-stone-500 text-sm font-medium">
                             <Phone size={14} className="text-stone-300" />
                             {b.phone}
+                          </div>
+                        )}
+                        {b.cuit && (
+                          <div className="flex items-center gap-2 text-stone-500 text-sm font-medium">
+                            <CreditCard size={14} className="text-stone-300" />
+                            CUIT: {b.cuit}
+                          </div>
+                        )}
+                        {b.email && (
+                          <div className="flex items-center gap-2 text-stone-500 text-sm font-medium">
+                            <Mail size={14} className="text-stone-300" />
+                            {b.email}
                           </div>
                         )}
                       </div>
@@ -371,7 +400,7 @@ export const SettingsModule = () => {
                     <div>
                       <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Nombre de Impresora</label>
                       <input 
-                        value={printerSettings.name}
+                        value={printerSettings.name || ''}
                         onChange={(e) => setPrinterSettings({ ...printerSettings, name: e.target.value })}
                         className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-bold" 
                       />
@@ -379,7 +408,7 @@ export const SettingsModule = () => {
                     <div>
                       <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Dirección IP / Puerto</label>
                       <input 
-                        value={printerSettings.ip}
+                        value={printerSettings.ip || ''}
                         onChange={(e) => setPrinterSettings({ ...printerSettings, ip: e.target.value })}
                         className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-bold" 
                       />
@@ -403,13 +432,21 @@ export const SettingsModule = () => {
                       </div>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => alert('Imprimiendo ticket de prueba...')}
-                    className="w-full py-5 border-2 border-brand-red text-brand-red font-black rounded-2xl hover:bg-brand-red hover:text-white transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-sm"
-                  >
-                    <Printer size={20} />
-                    Imprimir Ticket de Prueba
-                  </button>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => handleSaveSettings('printer', printerSettings)}
+                      className="flex-1 py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
+                    >
+                      Guardar Configuración
+                    </button>
+                    <button 
+                      onClick={() => alert('Imprimiendo ticket de prueba...')}
+                      className="flex-1 py-5 border-2 border-brand-red text-brand-red font-black rounded-2xl hover:bg-brand-red hover:text-white transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-sm"
+                    >
+                      <Printer size={20} />
+                      Ticket de Prueba
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -495,6 +532,12 @@ export const SettingsModule = () => {
                         </button>
                       </div>
                     </div>
+                    <button 
+                      onClick={() => handleSaveSettings('ticket', ticketSettings)}
+                      className="w-full py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
+                    >
+                      Guardar Configuración de Ticket
+                    </button>
                   </div>
                 </div>
               </div>
@@ -525,41 +568,16 @@ export const SettingsModule = () => {
                       />
                       <span className="font-black text-stone-900 text-2xl w-16 text-right">{shiftTolerance}m</span>
                     </div>
-                    <p className="text-[10px] text-stone-400 mt-4 font-bold uppercase tracking-widest leading-relaxed">
+                    <p className="text-[10px] text-stone-400 mt-4 font-bold uppercase tracking-widest leading-relaxed mb-8">
                       * Tiempo permitido para la apertura y cierre de turnos respecto al horario programado sin generar alertas.
                     </p>
+                    <button 
+                      onClick={() => handleSaveSettings('shiftTolerance', shiftTolerance)}
+                      className="w-full py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
+                    >
+                      Guardar Tolerancia
+                    </button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'business' && (
-              <div className="max-w-2xl space-y-8">
-                <div>
-                  <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Negocio</h1>
-                  <p className="text-stone-500 font-medium">Información legal y fiscal de la empresa</p>
-                </div>
-
-                <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
-                  <form className="space-y-6">
-                    <div>
-                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Nombre de la Empresa</label>
-                      <input defaultValue="Panchería Pro" className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black text-lg" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">CUIT / Identificación Fiscal</label>
-                      <input defaultValue="20-12345678-9" className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black text-lg" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Email de Contacto</label>
-                      <input defaultValue="admin@pancheriapro.com" className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black text-lg" />
-                    </div>
-                    <div className="pt-6">
-                      <button className="w-full py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-sm">
-                        Actualizar Información
-                      </button>
-                    </div>
-                  </form>
                 </div>
               </div>
             )}
@@ -586,6 +604,14 @@ export const SettingsModule = () => {
                 <div>
                   <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Teléfono</label>
                   <input name="phone" defaultValue={editingBranch?.phone} className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">CUIT</label>
+                  <input name="cuit" defaultValue={editingBranch?.cuit} className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2">Email</label>
+                  <input name="email" type="email" defaultValue={editingBranch?.email} className="w-full px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-black" />
                 </div>
                 <div className="flex gap-4 mt-8">
                   <button type="button" onClick={() => { setShowAddBranch(false); setEditingBranch(null); }} className="flex-1 py-4 font-black text-stone-500 hover:bg-stone-50 rounded-2xl transition-all uppercase tracking-widest text-xs">Cancelar</button>

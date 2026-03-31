@@ -7,7 +7,6 @@ import {
   signOut
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import bcrypt from 'bcryptjs';
 import { auth, db } from '../firebase';
 import { User } from '../types';
 
@@ -55,12 +54,28 @@ export const authService = {
   },
 
   verifyPin: async (userId: string, pin: string): Promise<boolean> => {
-    const userDoc = await getDoc(doc(db, 'empleados', userId));
-    if (userDoc.exists()) {
-      const data = userDoc.data();
-      if (!data.pin) return true; // Si no tiene PIN, entra directo
-      return await bcrypt.compare(pin, data.pin);
+    try {
+      const response = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operatorId: userId, pin })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.success;
+      }
+      
+      // If user has no PIN in DB, we might want to allow entry (legacy check)
+      if (response.status === 400) {
+        const userDoc = await getDoc(doc(db, 'empleados', userId));
+        if (userDoc.exists() && !userDoc.data().pin) return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("Error verifying PIN via API:", error);
+      return false;
     }
-    return false;
   }
 };

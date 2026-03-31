@@ -366,7 +366,47 @@ export const DashboardModule = () => {
                 </div>
               </div>
             )}
-            {['by_product', 'receipts', 'discounts', 'taxes'].includes(activeReport) && (
+            {activeReport === 'discounts' && (
+              <div className="space-y-6">
+                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Descuentos Aplicados</h1>
+                <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Total Descuentos Hoy</p>
+                      <h3 className="text-4xl font-black text-stone-900">${stats.totalDiscounts}</h3>
+                    </div>
+                    <div className="w-16 h-16 bg-brand-yellow/10 text-brand-yellow rounded-2xl flex items-center justify-center">
+                      <Tag size={32} />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest">Detalle por Venta</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-stone-100">
+                            <th className="py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Venta</th>
+                            <th className="py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest">Vendedor</th>
+                            <th className="py-4 text-[10px] font-black text-stone-400 uppercase tracking-widest text-right">Descuento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stats.rawSales.filter(s => (s.discount || 0) > 0).map((sale) => (
+                            <tr key={sale.id} className="border-b border-stone-50 last:border-none">
+                              <td className="py-4 font-black text-stone-900 text-xs uppercase">#{sale.id.slice(-6)}</td>
+                              <td className="py-4 font-bold text-stone-500 text-xs uppercase">{sale.user_name}</td>
+                              <td className="py-4 font-black text-brand-red text-xs text-right">-${sale.discount}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {['by_product', 'receipts', 'taxes'].includes(activeReport) && (
               <div className="flex flex-col items-center justify-center py-20 text-stone-300">
                 <div className="w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-4">
                   <LayoutDashboard size={40} />

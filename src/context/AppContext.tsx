@@ -7,26 +7,26 @@ import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
 
 export interface AppContextType {
   user: User | null;
-  setUser: (u: User | null) => void;
+  setUser: (_u: User | null) => void;
   allUsers: User[];
   branch: Branch | null;
-  setBranch: (b: Branch | null) => void;
+  setBranch: (_b: Branch | null) => void;
   shift: Shift | null;
-  setShift: (s: Shift | null) => void;
+  setShift: (_s: Shift | null) => void;
   onOpenCloseShift: () => void;
   printerSettings: PrinterSettings;
-  setPrinterSettings: (s: PrinterSettings) => void;
+  setPrinterSettings: (_s: PrinterSettings) => void;
   ticketSettings: TicketSettings;
-  setTicketSettings: (s: TicketSettings) => void;
+  setTicketSettings: (_s: TicketSettings) => void;
   shiftTolerance: number;
-  setShiftTolerance: (t: number) => void;
+  setShiftTolerance: (_t: number) => void;
   activeOperator: User | null;
-  setActiveOperator: (u: User | null) => void;
+  setActiveOperator: (_u: User | null) => void;
   isAuthReady: boolean;
   rolePermissions: RolePermission[];
   isFirstUser: boolean;
   showShiftModal: boolean;
-  setShowShiftModal: (s: boolean) => void;
+  setShowShiftModal: (_s: boolean) => void;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -49,8 +49,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [showShiftModal, setShowShiftModal] = useState(false);
 
   const [printerSettings, setPrinterSettings] = useState<PrinterSettings>({
-    type: 'network',
+    name: 'Impresora Térmica',
     address: '',
+    type: 'network',
     paperWidth: '80mm'
   });
 
@@ -59,10 +60,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     footer: '¡Gracias por su compra!',
     showLogo: true,
     showAddress: true,
-    showPhone: true
+    showPhone: true,
+    printTicket: true,
+    printComanda: true,
+    printShiftClosing: true
   });
 
   const [shiftTolerance, setShiftTolerance] = useState(5);
+
+  useEffect(() => {
+    if (!auth.currentUser) return () => {};
+
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.printer) setPrinterSettings(data.printer);
+        if (data.ticket) setTicketSettings(data.ticket);
+        if (data.shiftTolerance !== undefined) setShiftTolerance(data.shiftTolerance);
+      }
+    }, (err) => {
+      if (err.code !== 'permission-denied') {
+        handleFirestoreError(err, OperationType.GET, 'settings/global');
+      }
+    });
+    return () => unsub();
+  }, [auth.currentUser]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -138,10 +160,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [user?.branch_id]);
 
   useEffect(() => {
-    if (user?.branch_id) {
+    const currentBranchId = activeOperator?.branch_id || user?.branch_id;
+    if (currentBranchId) {
       const q = query(
         collection(db, 'shifts'), 
-        where('branch_id', '==', user.branch_id), 
+        where('branch_id', '==', currentBranchId), 
         where('status', '==', 'open')
       );
       const unsub = onSnapshot(q, (snapshot) => {
@@ -157,9 +180,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return () => unsub();
     }
     return () => {};
-  }, [user?.branch_id]);
+  }, [user?.branch_id, activeOperator?.branch_id]);
 
-  const onOpenCloseShift = () => setShowShiftModal(true);
+  useEffect(() => {
+    const currentUser = activeOperator || user;
+    if (currentUser && !shift && !showShiftModal && isAuthReady) {
+      setShowShiftModal(true);
+    }
+  }, [user, activeOperator, shift, showShiftModal, isAuthReady]);
+
+  const onOpenCloseShift = () => {
+    setShowShiftModal(true);
+  };
 
   return (
     <AppContext.Provider value={{

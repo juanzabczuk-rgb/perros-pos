@@ -50,6 +50,7 @@ export interface Customer {
 export interface CartItem extends Product {
   quantity: number;
   selections?: { [componentId: string]: string }; // componentId -> selectedProductId
+  discount?: Discount;
 }
 
 export interface SaleItem {
@@ -59,6 +60,8 @@ export interface SaleItem {
   quantity: number;
   price: number;
   selections?: { [key: string]: string } | null;
+  discount_id?: string;
+  discount_amount?: number;
 }
 
 export interface Sale {
@@ -83,6 +86,9 @@ export interface Branch {
   location?: string;
   opening_time?: string; // HH:mm
   closing_time?: string; // HH:mm
+  cuit?: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface Shift {
@@ -113,7 +119,8 @@ export interface CashMovement {
 
 export interface PrinterSettings {
   name: string;
-  ip: string;
+  address: string;
+  type: 'network' | 'usb' | 'bluetooth';
   paperWidth: '58mm' | '80mm';
 }
 
@@ -121,6 +128,9 @@ export interface TicketSettings {
   logo?: string;
   header?: string;
   footer?: string;
+  showLogo: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
   printTicket: boolean;
   printComanda: boolean;
   printShiftClosing: boolean;

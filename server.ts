@@ -90,13 +90,20 @@ async function startServer() {
       }
 
       const operatorData = operatorDoc.data();
-      const storedPinHash = operatorData?.pin;
+      const storedPin = operatorData?.pin;
 
-      if (!storedPinHash) {
-        return res.status(400).json({ error: "El operador no tiene PIN configurado" });
+      // If no PIN is configured, allow entry (optional security)
+      if (!storedPin || storedPin === "") {
+        return res.json({ success: true, operator: { id: operatorDoc.id, ...operatorData } });
       }
 
-      const isMatch = await bcrypt.compare(pin, storedPinHash);
+      // Support both bcrypt and plain text for transition
+      let isMatch = false;
+      if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+        isMatch = await bcrypt.compare(pin, storedPin);
+      } else {
+        isMatch = pin === storedPin;
+      }
 
       if (isMatch) {
         // Return success and operator data (excluding sensitive info)

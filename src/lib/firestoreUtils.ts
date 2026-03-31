@@ -53,5 +53,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export const calcularTotal = (cart: CartItem[]) => {
-  return cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  return cart.reduce((acc, item) => {
+    let itemTotal = item.price * item.quantity;
+    if (item.discount) {
+      if (item.discount.type === 'percentage') {
+        itemTotal -= (itemTotal * item.discount.value) / 100;
+      } else {
+        itemTotal -= item.discount.value * item.quantity;
+      }
+    }
+    return acc + Math.max(0, itemTotal);
+  }, 0);
 };

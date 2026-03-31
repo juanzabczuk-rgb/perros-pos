@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, 
   onSnapshot, 
-  query, 
   doc, 
   updateDoc, 
   addDoc, 
@@ -35,119 +34,111 @@ export const InventoryModule = () => {
   const [stock, setStock] = useState<StockItem[]>([]);
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'discounts'>('products');
-  const [selectedBranchId, setSelectedBranchId] = useState(user?.branch_id || '');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [activeSection, setActiveSection] = useState('products');
+
+  // UI States
+  const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [adjustingStock, setAdjustingStock] = useState<Product | null>(null);
+  const [showCategories, setShowCategories] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [showAddDiscount, setShowAddDiscount] = useState(false);
   const [editingDiscount, setEditingDiscount] = useState<Discount | null>(null);
   const [deletingDiscount, setDeletingDiscount] = useState<Discount | null>(null);
   const [isComposite, setIsComposite] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<ProductComponent[]>([]);
-  const [adjustingStock, setAdjustingStock] = useState<(Product & { quantity: number }) | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [showCategories, setShowCategories] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [calculatedCost, setCalculatedCost] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    let unsubCategories: (() => void) | undefined;
-    if (user) {
-      unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
-        const cats = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Category));
-        setCategories(cats);
-      }, (err) => {
-        if (err.code === 'permission-denied') return;
-        handleFirestoreError(err, OperationType.LIST, 'categories');
-      });
-    }
+    if (!user) return () => {};
+
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'products');
+    });
+
+    const unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'categories');
+    });
+
+    const unsubDiscounts = onSnapshot(collection(db, 'discounts'), (snapshot) => {
+      setDiscounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Discount)));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'discounts');
+    });
+
+    const unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
+      const branchesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+      setBranches(branchesData);
+      if (branchesData.length > 0 && !selectedBranchId) {
+        setSelectedBranchId(branchesData[0].id);
+      }
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'branches');
+    });
 
     return () => {
-      unsubCategories?.();
+      unsubProducts();
+      unsubCategories();
+      unsubDiscounts();
+      unsubBranches();
     };
   }, [user]);
 
   useEffect(() => {
-    let unsubProducts: (() => void) | undefined;
-    if (user) {
-      unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-        setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
-      }, (err) => {
-        if (err.code === 'permission-denied') return;
-        handleFirestoreError(err, OperationType.LIST, 'products');
-      });
+    if (!selectedBranchId) {
+      setStock([]);
+      return () => {};
     }
 
-    return () => {
-      unsubProducts?.();
-    };
-  }, [user]);
+    const unsubStock = onSnapshot(collection(db, 'branches', selectedBranchId, 'stock'), (snapshot) => {
+      setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem)));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, `branches/${selectedBranchId}/stock`);
+    });
 
-  useEffect(() => {
-    let unsubBranches: (() => void) | undefined;
-    if (user) {
-      unsubBranches = onSnapshot(collection(db, 'branches'), (snapshot) => {
-        setBranches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch)));
-      }, (err) => {
-        if (err.code === 'permission-denied') return;
-        handleFirestoreError(err, OperationType.LIST, 'branches');
-      });
-    }
-
-    return () => {
-      unsubBranches?.();
-    };
-  }, [user]);
-
-  useEffect(() => {
-    let unsubDiscounts: (() => void) | undefined;
-    if (user) {
-      unsubDiscounts = onSnapshot(collection(db, 'discounts'), (snapshot) => {
-        setDiscounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Discount)));
-      }, (err) => {
-        if (err.code === 'permission-denied') return;
-        handleFirestoreError(err, OperationType.LIST, 'discounts');
-      });
-    }
-
-    return () => {
-      unsubDiscounts?.();
-    };
-  }, [user]);
-
-  useEffect(() => {
-    let unsubStock: (() => void) | undefined;
-    if (user && selectedBranchId) {
-      const q = query(collection(db, 'branches', selectedBranchId, 'stock'));
-      unsubStock = onSnapshot(q, (snapshot) => {
-        setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem)));
-      }, (err) => {
-        if (err.code === 'permission-denied') return;
-        handleFirestoreError(err, OperationType.LIST, `branches/${selectedBranchId}/stock`);
-      });
-    }
-    return () => {
-      unsubStock?.();
-    };
-  }, [user, selectedBranchId]);
+    return () => unsubStock();
+  }, [selectedBranchId]);
 
   useEffect(() => {
     if (editing) {
-      setIsComposite(!!editing.is_composite);
-      if (editing.components) {
-        setSelectedComponents(editing.components);
-      } else {
-        setSelectedComponents([]);
-      }
+      setIsComposite(editing.is_composite || false);
+      setSelectedComponents(editing.components || []);
+      setImagePreview(editing.image_url || null);
     } else {
       setIsComposite(false);
       setSelectedComponents([]);
       setImagePreview(null);
     }
-  }, [editing, showAdd]);
+  }, [editing]);
+
+  useEffect(() => {
+    if (isComposite) {
+      const totalCost = selectedComponents.reduce((acc, comp) => {
+        if (comp.type === 'product') {
+          const product = products.find(p => p.id === comp.id);
+          return acc + (product?.cost || 0) * comp.quantity;
+        }
+        return acc;
+      }, 0);
+      setCalculatedCost(totalCost);
+    }
+  }, [isComposite, selectedComponents, products]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -160,58 +151,88 @@ export const InventoryModule = () => {
     }
   };
 
+  const addComponent = () => {
+    setSelectedComponents([...selectedComponents, { id: '', quantity: 1, type: 'product' }]);
+  };
+
+  const updateComponent = (index: number, field: keyof ProductComponent, value: string | number) => {
+    const newComponents = [...selectedComponents];
+    newComponents[index] = { ...newComponents[index], [field]: value };
+    setSelectedComponents(newComponents);
+  };
+
+  const removeComponent = (index: number) => {
+    setSelectedComponents(selectedComponents.filter((_, i) => i !== index));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const data = Object.fromEntries(formData.entries()) as unknown as Partial<Product> & { initial_stock?: string };
-    
-    data.is_composite = isComposite;
-    data.components = isComposite ? selectedComponents : [];
-    data.cost = parseFloat(data.cost as unknown as string);
-    data.price = parseFloat(data.price as unknown as string);
-    if (imagePreview) {
-      data.image_url = imagePreview;
-    }
+    const data = {
+      name: formData.get('name') as string,
+      sku: formData.get('sku') as string,
+      category: formData.get('category') as string,
+      unit: formData.get('unit') as string,
+      cost: isComposite ? calculatedCost : parseFloat(formData.get('cost') as string),
+      price: parseFloat(formData.get('price') as string),
+      is_composite: isComposite,
+      components: isComposite ? selectedComponents : [],
+      image_url: imagePreview || (editing?.image_url || null),
+      margin: 0
+    };
+    data.margin = ((data.price - data.cost) / data.price) * 100;
 
     try {
-      let productId = editing?.id;
       if (editing) {
         await updateDoc(doc(db, 'products', editing.id), data);
       } else {
         const docRef = await addDoc(collection(db, 'products'), data);
-        productId = docRef.id;
+        const productId = docRef.id;
         
-        const initialStock = parseFloat(data.initial_stock || '0');
-        if (user?.branch_id && initialStock > 0 && !isComposite) {
-          await setDoc(doc(db, 'branches', user.branch_id, 'stock', productId), {
-            quantity: initialStock,
-            lastUpdated: serverTimestamp()
-          });
+        if (!isComposite) {
+          const initialStock = parseFloat(formData.get('initial_stock') as string) || 0;
+          for (const b of branches) {
+            await setDoc(doc(db, 'branches', b.id, 'stock', productId), {
+              quantity: initialStock,
+              lastUpdated: serverTimestamp()
+            });
+          }
         }
       }
       setEditing(null);
       setShowAdd(false);
-      setImagePreview(null);
     } catch (err) {
       handleFirestoreError(err, editing ? OperationType.UPDATE : OperationType.CREATE, 'products');
     }
   };
 
+  const handleDeleteProduct = async () => {
+    if (!deletingProduct) return;
+    try {
+      await deleteDoc(doc(db, 'products', deletingProduct.id));
+      for (const b of branches) {
+        await deleteDoc(doc(db, 'branches', b.id, 'stock', deletingProduct.id));
+      }
+      setDeletingProduct(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `products/${deletingProduct.id}`);
+    }
+  };
+
   const handleAdjustStock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!adjustingStock || !selectedBranchId) return;
     const formData = new FormData(e.target as HTMLFormElement);
     const quantity = parseFloat(formData.get('quantity') as string);
 
     try {
-      const stockRef = doc(db, 'branches', selectedBranchId, 'stock', adjustingStock.id);
-      await setDoc(stockRef, {
+      await setDoc(doc(db, 'branches', selectedBranchId, 'stock', adjustingStock.id), {
         quantity,
         lastUpdated: serverTimestamp()
-      }, { merge: true });
+      });
       setAdjustingStock(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `branches/${selectedBranchId}/stock/${adjustingStock.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `branches/${selectedBranchId}/stock/${adjustingStock.id}`);
     }
   };
 
@@ -220,9 +241,9 @@ export const InventoryModule = () => {
     if (!newCategoryName.trim()) return;
     try {
       if (editingCategory) {
-        await updateDoc(doc(db, 'categories', editingCategory.id), { name: newCategoryName.trim() });
+        await updateDoc(doc(db, 'categories', editingCategory.id), { name: newCategoryName });
       } else {
-        await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
+        await addDoc(collection(db, 'categories'), { name: newCategoryName });
       }
       setNewCategoryName('');
       setEditingCategory(null);
@@ -235,20 +256,7 @@ export const InventoryModule = () => {
     try {
       await deleteDoc(doc(db, 'categories', id));
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'categories');
-    }
-  };
-
-  const handleDeleteProduct = async () => {
-    if (!deletingProduct) return;
-    try {
-      await deleteDoc(doc(db, 'products', deletingProduct.id));
-      if (user?.branch_id) {
-        await deleteDoc(doc(db, 'branches', user.branch_id, 'stock', deletingProduct.id));
-      }
-      setDeletingProduct(null);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `products/${deletingProduct.id}`);
+      handleFirestoreError(err, OperationType.DELETE, `categories/${id}`);
     }
   };
 
@@ -257,8 +265,8 @@ export const InventoryModule = () => {
     const formData = new FormData(e.target as HTMLFormElement);
     const data = {
       name: formData.get('name') as string,
+      type: formData.get('type') as 'percentage' | 'fixed',
       value: parseFloat(formData.get('value') as string),
-      type: formData.get('type') as string, // 'percentage' | 'fixed'
       enabled: true
     };
     try {
@@ -284,232 +292,301 @@ export const InventoryModule = () => {
     }
   };
 
-  const addComponent = () => {
-    setSelectedComponents([...selectedComponents, { id: '', quantity: 1, type: 'product' }]);
-  };
-
-  const removeComponent = (index: number) => {
-    setSelectedComponents(selectedComponents.filter((_, i) => i !== index));
-  };
-
-  const updateComponent = (index: number, field: keyof ProductComponent, value: string | number) => {
-    const newComps = [...selectedComponents];
-    newComps[index] = { ...newComps[index], [field]: value } as ProductComponent;
-    setSelectedComponents(newComps);
-  };
-
-  const calculatedCost = isComposite 
-    ? selectedComponents.reduce((acc, comp) => {
-        if (comp.type === 'category') return acc;
-        const product = products.find(p => p.id === comp.id);
-        return acc + (product?.cost || 0) * comp.quantity;
-      }, 0)
-    : 0;
+  const sections = [
+    { id: 'products', label: 'Productos', icon: Package },
+    { id: 'stock', label: 'Stock', icon: Store },
+    { id: 'categories', label: 'Categorías', icon: Tag },
+    { id: 'discounts', label: 'Descuentos', icon: Percent },
+  ];
 
   return (
-    <div className="p-4 lg:p-6 space-y-4 lg:space-y-6 h-full overflow-y-auto noscrollbar">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-black text-stone-900 uppercase tracking-tight">Stock</h1>
-          <p className="text-xs lg:text-sm text-stone-500 font-medium">Gestión de productos, existencias y descuentos</p>
+    <div className="flex h-full bg-stone-50 overflow-hidden">
+      {/* Inventory Sidebar */}
+      <div className="w-64 bg-white border-r border-stone-200 flex flex-col">
+        <div className="p-6 border-b border-stone-200">
+          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">Inventario</h2>
+          <p className="text-xs text-stone-400 font-bold mt-1">GESTIÓN DE STOCK</p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-stone-100 p-1 rounded-2xl mr-4">
-            <button 
-              onClick={() => setActiveTab('products')}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'products' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400 hover:text-stone-600'
+        <div className="flex-1 overflow-y-auto p-4 space-y-1 noscrollbar">
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-black transition-all ${
+                activeSection === section.id
+                  ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20'
+                  : 'text-stone-500 hover:bg-stone-50'
               }`}
             >
-              Productos
+              <section.icon size={18} />
+              {section.label}
             </button>
-            <button 
-              onClick={() => setActiveTab('discounts')}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'discounts' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              Descuentos
-            </button>
-          </div>
-
-          {activeTab === 'products' ? (
-            <>
-              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-sm">
-                <Store size={16} className="text-stone-400" />
-                <select 
-                  value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
-                  className="bg-transparent border-none focus:ring-0 font-bold text-stone-700 text-xs"
-                >
-                  <option value="">Seleccionar Sucursal</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button 
-                onClick={() => setShowCategories(true)}
-                className="bg-white text-stone-600 px-4 py-2 rounded-xl border border-stone-200 font-bold flex items-center gap-2 hover:bg-stone-50 transition-all text-sm"
-              >
-                <Tag size={18} />
-                Categorías
-              </button>
-              <button 
-                onClick={() => setShowAdd(true)}
-                className="bg-brand-red text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-brand-red/20 text-sm"
-              >
-                <PlusCircle size={18} />
-                Nuevo Producto
-              </button>
-            </>
-          ) : (
-            <button 
-              onClick={() => setShowAddDiscount(true)}
-              className="bg-brand-red text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-brand-red/20 text-sm"
-            >
-              <Percent size={18} />
-              Nuevo Descuento
-            </button>
-          )}
+          ))}
         </div>
       </div>
 
-      {activeTab === 'products' ? (
-        <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
-                  <th className="px-8 py-6">Producto</th>
-                  <th className="px-8 py-6">Categoría</th>
-                  <th className="px-8 py-6">Costo</th>
-                  <th className="px-8 py-6">Precio</th>
-                  <th className="px-8 py-6">Stock</th>
-                  <th className="px-8 py-6 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {products.map(product => {
-                  const productStock = stock.find(s => s.id === product.id);
-                  return (
-                    <tr key={product.id} className="hover:bg-stone-50/50 transition-colors group">
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                            {product.image_url ? (
-                              <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <Package size={20} className="text-stone-300" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-black text-stone-900">{product.name}</p>
-                            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
-                          </div>
+      {/* Inventory Content */}
+      <div className="flex-1 overflow-y-auto p-8 noscrollbar">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeSection}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {activeSection === 'products' && (
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Productos</h1>
+                    <p className="text-stone-500 font-medium">Catálogo completo de artículos y combos</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowAdd(true)}
+                    className="bg-brand-red text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <PlusCircle size={20} />
+                    Nuevo Producto
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                        <th className="px-8 py-6">Producto</th>
+                        <th className="px-8 py-6">Categoría</th>
+                        <th className="px-8 py-6">Costo</th>
+                        <th className="px-8 py-6">Precio</th>
+                        <th className="px-8 py-6 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {products.map(product => (
+                        <tr key={product.id} className="hover:bg-stone-50/50 transition-colors group">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center overflow-hidden">
+                                {product.image_url ? (
+                                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Package size={20} className="text-stone-300" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="font-black text-stone-900">{product.name}</p>
+                                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-xs font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
+                              {product.category}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 font-bold text-stone-600">${product.cost}</td>
+                          <td className="px-8 py-6 font-black text-stone-900">${product.price}</td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => setEditing(product)} className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all">
+                                <Edit2 size={18} />
+                              </button>
+                              <button onClick={() => setDeletingProduct(product)} className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'stock' && (
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Stock</h1>
+                    <p className="text-stone-500 font-medium">Control de existencias por sucursal</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-stone-200 shadow-sm">
+                    <Store size={16} className="text-stone-400" />
+                    <select 
+                      value={selectedBranchId}
+                      onChange={(e) => setSelectedBranchId(e.target.value)}
+                      className="bg-transparent border-none focus:ring-0 font-black text-stone-900 text-xs uppercase tracking-widest"
+                    >
+                      <option value="">Seleccionar Sucursal</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                        <th className="px-8 py-6">Producto</th>
+                        <th className="px-8 py-6">Stock Actual</th>
+                        <th className="px-8 py-6">Estado</th>
+                        <th className="px-8 py-6 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {products.filter(p => !p.is_composite).map(product => {
+                        const productStock = stock.find(s => s.id === product.id);
+                        const quantity = productStock?.quantity || 0;
+                        return (
+                          <tr key={product.id} className="hover:bg-stone-50/50 transition-colors group">
+                            <td className="px-8 py-6">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center">
+                                  <Package size={18} className="text-stone-400" />
+                                </div>
+                                <div>
+                                  <p className="font-black text-stone-900 text-sm">{product.name}</p>
+                                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className="text-lg font-black text-stone-900">{quantity}</span>
+                              <span className="ml-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest">{product.unit || 'un'}</span>
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                quantity <= 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+                              }`}>
+                                {quantity <= 5 ? 'Stock Bajo' : 'Normal'}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <button 
+                                onClick={() => setAdjustingStock({ ...product, quantity })}
+                                className="px-4 py-2 bg-stone-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
+                              >
+                                Ajustar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'categories' && (
+              <div className="max-w-2xl space-y-8">
+                <div>
+                  <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Categorías</h1>
+                  <p className="text-stone-500 font-medium">Organización de productos por grupos</p>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm space-y-8">
+                  <form onSubmit={handleSaveCategory} className="flex gap-3">
+                    <input 
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Nueva categoría..."
+                      className="flex-1 px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-bold"
+                    />
+                    <button type="submit" className="bg-stone-900 text-white px-8 rounded-2xl font-black hover:bg-stone-800 transition-all uppercase tracking-widest text-xs">
+                      {editingCategory ? 'Guardar' : 'Agregar'}
+                    </button>
+                  </form>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {categories.map(cat => (
+                      <div key={cat.id} className="flex items-center justify-between p-5 bg-stone-50 rounded-2xl group border border-stone-100 hover:border-stone-200 transition-all">
+                        <span className="font-black text-stone-900 uppercase tracking-widest text-xs">{cat.name}</span>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditingCategory(cat); setNewCategoryName(cat.name); }} className="p-2 text-stone-400 hover:text-brand-red"><Edit2 size={16} /></button>
+                          <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-stone-400 hover:text-red-600"><Trash2 size={16} /></button>
                         </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <span className="text-xs font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
-                          {product.category}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 font-bold text-stone-600">${product.cost}</td>
-                      <td className="px-8 py-6 font-black text-stone-900">${product.price}</td>
-                      <td className="px-8 py-6">
-                        {product.is_composite ? (
-                          <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest italic">Compuesto</span>
-                        ) : (
-                          <button 
-                            onClick={() => setAdjustingStock({ ...product, quantity: productStock?.quantity || 0 })}
-                            className={`px-4 py-1.5 rounded-xl font-black text-xs transition-all ${
-                              (productStock?.quantity || 0) <= 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
-                            }`}
-                          >
-                            {productStock?.quantity || 0} {product.unit || 'un'}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-8 py-6 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setEditing(product)} className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all">
-                            <Edit2 size={18} />
-                          </button>
-                          <button onClick={() => setDeletingProduct(product)} className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
-                  <th className="px-8 py-6">Nombre</th>
-                  <th className="px-8 py-6">Valor</th>
-                  <th className="px-8 py-6">Tipo</th>
-                  <th className="px-8 py-6">Estado</th>
-                  <th className="px-8 py-6 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200">
-                {discounts.map(discount => (
-                  <tr key={discount.id} className="hover:bg-stone-50/50 transition-colors group">
-                    <td className="px-8 py-6 font-black text-stone-900 uppercase tracking-widest text-xs">{discount.name}</td>
-                    <td className="px-8 py-6 font-black text-stone-900">
-                      {discount.type === 'percentage' ? `${discount.value}%` : `$${discount.value}`}
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="text-[10px] font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
-                        {discount.type === 'percentage' ? 'Porcentaje' : 'Fijo'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                        Activo
-                      </span>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => { setEditingDiscount(discount); setShowAddDiscount(true); }}
-                          className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button 
-                          onClick={() => setDeletingDiscount(discount)}
-                          className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                        >
-                          <Trash2 size={18} />
-                        </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-                {discounts.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-8 py-20 text-center text-stone-300">
-                      <Percent size={48} className="mx-auto mb-4" />
-                      <p className="font-black uppercase tracking-widest">No hay descuentos configurados</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeSection === 'discounts' && (
+              <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Descuentos</h1>
+                    <p className="text-stone-500 font-medium">Promociones y rebajas aplicables</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowAddDiscount(true)}
+                    className="bg-brand-red text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Percent size={20} />
+                    Nuevo Descuento
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                        <th className="px-8 py-6">Nombre</th>
+                        <th className="px-8 py-6">Valor</th>
+                        <th className="px-8 py-6">Tipo</th>
+                        <th className="px-8 py-6">Estado</th>
+                        <th className="px-8 py-6 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200">
+                      {discounts.map(discount => (
+                        <tr key={discount.id} className="hover:bg-stone-50/50 transition-colors group">
+                          <td className="px-8 py-6 font-black text-stone-900 uppercase tracking-widest text-xs">{discount.name}</td>
+                          <td className="px-8 py-6 font-black text-stone-900">
+                            {discount.type === 'percentage' ? `${discount.value}%` : `$${discount.value}`}
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="text-[10px] font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
+                              {discount.type === 'percentage' ? 'Porcentaje' : 'Fijo'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6">
+                            <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                              Activo
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={() => { setEditingDiscount(discount); setShowAddDiscount(true); }}
+                                className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button 
+                                onClick={() => setDeletingDiscount(discount)}
+                                className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
 
       <AnimatePresence>
         {(editing || showAdd) && (
@@ -644,7 +721,7 @@ export const InventoryModule = () => {
                         
                         <div className="space-y-3">
                           {selectedComponents.map((comp, idx) => (
-                            <div key={idx} className="flex gap-2 items-start bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                            <div key={`${comp.type}-${comp.id}-${idx}`} className="flex gap-2 items-start bg-stone-50 p-4 rounded-2xl border border-stone-200">
                               <div className="flex-1 space-y-2">
                                 <select 
                                   value={comp.type}

@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { Menu } from 'lucide-react';
+import { Toaster } from 'sonner';
 import { VentasModule } from './components/VentasModule';
 import { InventoryModule } from './components/InventoryModule';
 import { CustomersModule } from './components/CustomersModule';
@@ -91,6 +92,7 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-stone-200 font-sans text-stone-900 overflow-hidden items-center justify-center p-0 sm:p-2 md:p-4">
+      <Toaster position="top-center" richColors />
       <div className="w-full max-w-[1280px] h-full max-h-[800px] bg-stone-100 flex overflow-hidden shadow-2xl sm:rounded-[32px] relative border border-stone-300/50">
         <Sidebar 
           activeTab={activeTab} 

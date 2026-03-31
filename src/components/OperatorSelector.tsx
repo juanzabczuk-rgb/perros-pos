@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { UserCircle, Lock } from 'lucide-react';
 import { authService } from '../services/authService';
 import { User } from '../types';
+import { toast } from 'sonner';
 
 export const OperatorSelector = () => {
   const { allUsers, setActiveOperator, setUser } = useApp();
@@ -17,6 +18,7 @@ export const OperatorSelector = () => {
     try {
       const isValid = await authService.verifyPin(selectedUserForPin.id, operatorPinInput);
       if (isValid) {
+        toast.success(`Bienvenido, ${selectedUserForPin.name}`);
         setActiveOperator(selectedUserForPin);
         setSelectedUserForPin(null);
         setOperatorPinInput('');
@@ -104,11 +106,11 @@ export const OperatorSelector = () => {
                   type="password" 
                   value={operatorPinInput}
                   onChange={(e) => {
-                    setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 4));
+                    setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
                     setOperatorPinError(false);
                   }}
                   onKeyDown={(e) => e.key === 'Enter' && verifyOperatorPin()}
-                  className={`w-full text-center text-3xl tracking-[1em] font-black py-4 bg-stone-50 rounded-2xl border-2 transition-all ${operatorPinError ? 'border-brand-red bg-brand-red/5' : 'border-transparent focus:border-brand-red'}`}
+                  className={`w-full text-center text-3xl tracking-[0.5em] font-black py-4 bg-stone-50 rounded-2xl border-2 transition-all ${operatorPinError ? 'border-brand-red bg-brand-red/5' : 'border-transparent focus:border-brand-red'}`}
                   placeholder="••••"
                   autoFocus
                 />

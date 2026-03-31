@@ -30,22 +30,26 @@ import {
   ChevronRight, 
   CreditCard, 
   QrCode, 
-  Check 
+  Check,
+  Tag,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
-import { handleFirestoreError, OperationType, calcularTotal } from '../lib/firestoreUtils';
-import { Product, CartItem, Customer, CashMovement, Sale, SaleItem, ShiftSummary } from '../types';
+import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
+import { Product, CartItem, Customer, CashMovement, Sale, SaleItem, Discount } from '../types';
 
 export const VentasModule = () => {
-  const { user, shift, onOpenCloseShift } = useApp();
+  const { user, shift, onOpenCloseShift, branch } = useApp();
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [showCheckout, setShowCheckout] = useState(false);
   const [paymentType, setPaymentType] = useState('Efectivo');
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [showDiscountSelector, setShowDiscountSelector] = useState<string | null>(null); // itemKey
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
@@ -55,6 +59,8 @@ export const VentasModule = () => {
   const [showMovementModal, setShowMovementModal] = useState<'income' | 'expense' | null>(null);
   const [selectingForProduct, setSelectingForProduct] = useState<{ product: Product, componentIndex: number, selections: { [key: string]: string } } | null>(null);
   const [showPrintModal, setShowPrintModal] = useState<Partial<Sale> | null>(null);
+  const [showReceipt, setShowReceipt] = useState<Sale | null>(null);
+  const [showComanda, setShowComanda] = useState<CartItem[] | SaleItem[] | null>(null);
   const [searchHistory, setSearchHistory] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerType, setCustomerType] = useState<'final' | 'client'>('final');
@@ -98,9 +104,17 @@ export const VentasModule = () => {
       handleFirestoreError(err, OperationType.LIST, 'customers');
     });
 
+    const unsubDiscounts = onSnapshot(collection(db, 'discounts'), (snapshot) => {
+      setDiscounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Discount)).filter(d => d.enabled));
+    }, (err) => {
+      if (err.code === 'permission-denied') return;
+      handleFirestoreError(err, OperationType.LIST, 'discounts');
+    });
+
     return () => {
       unsubProducts();
       unsubCustomers();
+      unsubDiscounts();
     };
   }, [user]);
 
@@ -146,6 +160,145 @@ export const VentasModule = () => {
     });
     return () => unsub();
   }, [shift?.id]);
+
+  const UnifiedPrintModal = ({ sale, items, onClose }: { sale?: Sale; items?: CartItem[] | SaleItem[]; onClose: () => void }) => {
+    const [view, setView] = useState<'receipt' | 'comanda'>(sale ? 'receipt' : 'comanda');
+
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 print-container">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm no-print" />
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col border border-stone-200 print:border-none print:shadow-none print:rounded-none print:max-w-none print:w-full">
+          <div className="p-8 bg-stone-50 border-b border-stone-200 flex items-center justify-between no-print">
+            <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">
+              {view === 'receipt' ? 'Ticket de Venta' : 'Comanda de Cocina'}
+            </h2>
+            <button onClick={onClose} className="p-2 hover:bg-white rounded-xl transition-colors text-stone-400">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-8 bg-white font-mono text-xs space-y-8 overflow-y-auto max-h-[70vh] noscrollbar print:max-h-none print:overflow-visible">
+            {view === 'receipt' && sale && (
+              <div className="space-y-4 print:block">
+                <div className="text-center space-y-1">
+                  <h3 className="text-lg font-black uppercase">{branch?.name || 'MI NEGOCIO POS'}</h3>
+                  {branch?.cuit && <p className="text-[10px] font-bold">CUIT: {branch.cuit}</p>}
+                  {branch?.location && <p className="text-[10px] font-bold">{branch.location}</p>}
+                  {branch?.email && <p className="text-[10px] font-bold">{branch.email}</p>}
+                  <p className="text-stone-400 pt-2">{formatDate(sale.created_at)}</p>
+                </div>
+                
+                <div className="border-t border-dashed border-stone-200 pt-4 space-y-2">
+                  {sale.items.map((item, idx) => (
+                    <div key={`receipt-item-${idx}`} className="flex justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-black uppercase">{'product_name' in item ? item.product_name : (item as CartItem).name}</p>
+                        <p className="text-[10px] text-stone-400">{item.quantity} x ${item.price.toLocaleString()}</p>
+                        {item.selections && Object.entries(item.selections).map(([key, val]: [string, string], sIdx) => (
+                          <p key={`receipt-sel-${key}-${sIdx}`} className="text-[10px] text-stone-500 ml-2 italic">- {products.find(p => p.id === val)?.name || val}</p>
+                        ))}
+                      </div>
+                      <p className="font-black">${(item.quantity * item.price).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-dashed border-stone-200 pt-4 space-y-1">
+                  <div className="flex justify-between font-bold">
+                    <p>SUBTOTAL</p>
+                    <p>${((sale.total || 0) + (sale.discount || 0)).toLocaleString()}</p>
+                  </div>
+                  {(sale.discount || 0) > 0 && (
+                    <div className="flex justify-between text-brand-red font-bold">
+                      <p>DESCUENTO</p>
+                      <p>-${(sale.discount || 0).toLocaleString()}</p>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-black pt-2">
+                    <p>TOTAL</p>
+                    <p>${(sale.total || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-dashed border-stone-200 pt-4 text-center space-y-1">
+                  <p className="font-bold uppercase">Pago: {sale.payment_type || sale.payment_method}</p>
+                  <p className="text-stone-400 uppercase tracking-widest text-[10px]">¡Gracias por su compra!</p>
+                </div>
+              </div>
+            )}
+            
+            {view === 'comanda' && items && (
+              <div className="space-y-4 print:block">
+                <div className="text-center space-y-1">
+                  <h3 className="text-lg font-black uppercase">COMANDA DE PREPARACIÓN</h3>
+                  <p className="text-stone-400">{new Date().toLocaleString()}</p>
+                </div>
+                
+                <div className="border-t border-dashed border-stone-200 pt-4 space-y-4">
+                  {items.map((item, idx) => (
+                    <div key={`comanda-item-${idx}`} className="space-y-1">
+                      <div className="flex items-center gap-4">
+                        <span className="text-xl font-black bg-stone-900 text-white w-8 h-8 flex items-center justify-center rounded-lg">{item.quantity}</span>
+                        <p className="text-lg font-black uppercase">{'product_name' in item ? item.product_name : (item as CartItem).name}</p>
+                      </div>
+                      {item.selections && Object.entries(item.selections).map(([key, val]: [string, string], sIdx) => (
+                        <p key={`comanda-sel-${key}-${sIdx}`} className="text-sm text-stone-600 ml-12 font-bold uppercase">- {products.find(p => p.id === val)?.name || val}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="p-6 bg-stone-50 border-t border-stone-200 flex flex-col gap-3 no-print">
+            {view === 'receipt' ? (
+              <>
+                <button
+                  onClick={() => {
+                    window.print();
+                    if (items && items.length > 0) {
+                      setView('comanda');
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  className="w-full py-4 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                >
+                  <Printer size={16} />
+                  Imprimir Ticket
+                </button>
+                
+                <button
+                  onClick={onClose}
+                  className="w-full py-4 bg-stone-100 text-stone-500 font-bold rounded-2xl hover:bg-stone-200 transition-all uppercase tracking-widest text-xs"
+                >
+                  Cerrar y Finalizar
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    window.print();
+                    onClose();
+                  }}
+                  className="w-full py-4 bg-stone-900 text-white font-black rounded-2xl shadow-xl shadow-stone-900/20 hover:bg-stone-800 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                >
+                  <Printer size={16} />
+                  Imprimir Comanda
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full py-4 bg-stone-100 text-stone-500 font-bold rounded-2xl hover:bg-stone-200 transition-all uppercase tracking-widest text-xs"
+                >
+                  Cerrar
+                </button>
+              </>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    );
+  };
 
   const handleRefund = async (saleId: string) => {
     try {
@@ -273,7 +426,7 @@ export const VentasModule = () => {
           customer_name: selectedCustomer ? `${selectedCustomer.first_name} ${selectedCustomer.last_name}` : 'Consumidor Final',
           shift_id: shift.id,
           total,
-          discount: 0,
+          discount: totalDiscount,
           payment_type: paymentType,
           status: 'completed',
           created_at: serverTimestamp(),
@@ -283,7 +436,9 @@ export const VentasModule = () => {
             product_name: item.name,
             quantity: item.quantity,
             price: item.price,
-            selections: item.selections || null
+            selections: item.selections || null,
+            discount_id: item.discount?.id || null,
+            discount_amount: calculateItemDiscount(item)
           }))
         });
  
@@ -308,7 +463,7 @@ export const VentasModule = () => {
       setCart([]);
       setShowCheckout(false);
       setSelectedCustomer(null);
-      setShowPrintModal({ id: saleId, total, items: cart.map(item => ({ ...item })), created_at: new Date() });
+      setShowPrintModal({ id: saleId, total, discount: totalDiscount, items: cart.map(item => ({ ...item })), created_at: new Date() });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'sales');
       alert('Error al procesar la venta');
@@ -403,22 +558,49 @@ export const VentasModule = () => {
     }));
   };
 
-  const subtotal = calcularTotal(cart);
-  const total = subtotal;
+  const applyDiscountToItem = (itemKey: string, discount: Discount | null) => {
+    setCart(prev => prev.map(item => {
+      if (getCartItemKey(item) === itemKey) {
+        return { ...item, discount: discount || undefined };
+      }
+      return item;
+    }));
+    setShowDiscountSelector(null);
+  };
+
+  const calculateItemDiscount = (item: CartItem) => {
+    if (!item.discount) return 0;
+    const price = item.price || 0;
+    const quantity = item.quantity || 0;
+    const discountValue = item.discount.value || 0;
+    
+    if (item.discount.type === 'percentage') {
+      return (price * quantity * discountValue) / 100;
+    }
+    return discountValue * quantity;
+  };
+
+  const totalDiscount = cart.reduce((acc, item) => acc + (calculateItemDiscount(item) || 0), 0);
+  const subtotal = cart.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 0)), 0);
+  const total = Math.max(0, subtotal - totalDiscount);
 
   const shiftSales = salesHistory.filter(s => s.shift_id === shift?.id && s.status !== 'refunded');
-  const cashSales = shiftSales.filter(s => s.payment_type === 'Efectivo').reduce((acc, s) => acc + s.total, 0);
-  const cardSales = shiftSales.filter(s => s.payment_type === 'Tarjeta').reduce((acc, s) => acc + s.total, 0);
-  const qrSales = shiftSales.filter(s => s.payment_type === 'Transferencia').reduce((acc, s) => acc + s.total, 0);
+  const cashSales = shiftSales.filter(s => s.payment_type === 'Efectivo').reduce((acc, s) => acc + (s.total || 0), 0);
+  const cardSales = shiftSales.filter(s => s.payment_type === 'Tarjeta').reduce((acc, s) => acc + (s.total || 0), 0);
+  const qrSales = shiftSales.filter(s => s.payment_type === 'QR').reduce((acc, s) => acc + (s.total || 0), 0);
   
   const totalIncome = movements.filter(m => m.type === 'income').reduce((acc, m) => acc + m.amount, 0);
   const totalExpense = movements.filter(m => m.type === 'expense').reduce((acc, m) => acc + m.amount, 0);
-  const refundsCash = salesHistory.filter(s => s.shift_id === shift?.id && s.status === 'refunded' && s.payment_type === 'Efectivo').reduce((acc, s) => acc + s.total, 0);
-  const totalRefunds = salesHistory.filter(s => s.shift_id === shift?.id && s.status === 'refunded').reduce((acc, s) => acc + s.total, 0);
   
-  const theoreticalCash = (shift?.initial_cash || 0) + cashSales + totalIncome - totalExpense - refundsCash;
+  const refundedSales = salesHistory.filter(s => s.shift_id === shift?.id && s.status === 'refunded');
+  const totalRefunds = refundedSales.reduce((acc, s) => acc + s.total, 0);
+  const refundsCash = refundedSales.filter(s => s.payment_type === 'Efectivo').reduce((acc, s) => acc + s.total, 0);
+  
+  const totalDiscountsShift = shiftSales.reduce((acc, s) => acc + (s.discount || 0), 0);
   const netSales = shiftSales.reduce((acc, s) => acc + s.total, 0);
-  const grossSales = netSales + totalRefunds;
+  const grossSales = netSales + totalDiscountsShift + totalRefunds + refundedSales.reduce((acc, s) => acc + (s.discount || 0), 0);
+
+  const theoreticalCash = (shift?.initial_cash || 0) + cashSales + totalIncome - totalExpense - refundsCash;
 
   const filteredHistory = salesHistory.filter(sale => {
     const searchLower = searchHistory.toLowerCase();
@@ -458,9 +640,9 @@ export const VentasModule = () => {
               <div className="flex-1 overflow-y-auto p-8 grid grid-cols-2 gap-4 noscrollbar">
                 {products
                   .filter(p => p.category === selectingForProduct.product.components![selectingForProduct.componentIndex].id && !p.is_composite)
-                  .map(p => (
+                  .map((p, pIdx) => (
                     <button
-                      key={p.id}
+                      key={`comp-prod-${p.id}-${pIdx}`}
                       onClick={() => handleSelection(p.id)}
                       className="p-6 bg-stone-50 rounded-3xl border-2 border-transparent hover:border-brand-red hover:bg-white transition-all text-left group"
                     >
@@ -591,7 +773,7 @@ export const VentasModule = () => {
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-stone-500 font-bold">Apertura de turno</span>
-                      <span className="font-black text-stone-900">{shift ? new Date(shift.start_time).toLocaleString() : '-'}</span>
+                      <span className="font-black text-stone-900">{shift ? formatDate(shift.start_time) : '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -653,7 +835,7 @@ export const VentasModule = () => {
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-stone-500 font-bold">Descuentos</span>
-                      <span className="font-black text-stone-900">$0</span>
+                      <span className="font-black text-stone-900">${totalDiscountsShift}</span>
                     </div>
                     <div className="pt-3 border-t border-stone-100 flex justify-between items-center text-base">
                       <span className="text-stone-900 font-black uppercase tracking-tighter">VENTAS NETAS</span>
@@ -740,6 +922,20 @@ export const VentasModule = () => {
                                 >
                                   <RotateCcw size={12} />
                                 </button>
+                                <button 
+                                  onClick={() => setShowReceipt(sale)}
+                                  className="p-1.5 text-stone-500 hover:bg-stone-100 rounded-lg transition-all"
+                                  title="Reimprimir Ticket"
+                                >
+                                  <Banknote size={12} />
+                                </button>
+                                <button 
+                                  onClick={() => setShowComanda(sale.items)}
+                                  className="p-1.5 text-stone-500 hover:bg-stone-100 rounded-lg transition-all"
+                                  title="Reimprimir Comanda"
+                                >
+                                  <Package size={12} />
+                                </button>
                               </div>
                             )}
                           </td>
@@ -752,11 +948,11 @@ export const VentasModule = () => {
             </div>
           ) : (
             <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
-              {displayProducts.map(product => (
+              {displayProducts.map((product, idx) => (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  key={product.id}
+                  key={`prod-${product.id}-${idx}`}
                   onClick={() => addToCart(product)}
                   className="bg-white p-2 rounded-xl shadow-sm hover:shadow-md transition-all text-left flex flex-col h-full border border-stone-200/50"
                 >
@@ -865,9 +1061,9 @@ export const VentasModule = () => {
                           `${c.first_name} ${c.last_name}`.toLowerCase().includes(customerSearch.toLowerCase()) ||
                           (c.dni || '').includes(customerSearch)
                         )
-                        .map(c => (
+                        .map((c, idx) => (
                           <button
-                            key={c.id}
+                            key={`cust-${c.id}-${idx}`}
                             onClick={() => {
                               setSelectedCustomer(c);
                               setCustomerSearch('');
@@ -899,14 +1095,14 @@ export const VentasModule = () => {
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3 noscrollbar">
             <AnimatePresence>
-              {cart.map(item => {
+              {cart.map((item, idx) => {
                 const itemKey = getCartItemKey(item);
                 return (
                   <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
-                    key={itemKey}
+                    key={`cart-${itemKey}-${idx}`}
                     className="flex items-center gap-3 group"
                   >
                     <div className="flex-1">
@@ -916,15 +1112,35 @@ export const VentasModule = () => {
                           {Object.values(item.selections).map(id => products.find(p => p.id === id)?.name).join(' + ')}
                         </p>
                       )}
-                      <p className="text-[10px] text-stone-400">${item.price} c/u</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-stone-400">${item.price} c/u</p>
+                        {item.discount && (
+                          <span className="text-[8px] bg-green-100 text-green-600 px-1 rounded font-black uppercase">
+                            -{item.discount.type === 'percentage' ? `${item.discount.value}%` : `$${item.discount.value}`}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center bg-stone-100 rounded-lg p-0.5">
-                      <button onClick={() => updateQuantity(itemKey, -1)} className="p-1 hover:text-brand-red"><Minus size={12} /></button>
-                      <span className="w-6 text-center text-xs font-black">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(itemKey, 1)} className="p-1 hover:text-brand-red"><Plus size={12} /></button>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center bg-stone-100 rounded-lg p-0.5">
+                        <button onClick={() => updateQuantity(itemKey, -1)} className="p-1 hover:text-brand-red"><Minus size={12} /></button>
+                        <span className="w-6 text-center text-xs font-black">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(itemKey, 1)} className="p-1 hover:text-brand-red"><Plus size={12} /></button>
+                      </div>
+                      <button 
+                        onClick={() => setShowDiscountSelector(itemKey)}
+                        className={`text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded transition-colors ${
+                          item.discount ? 'bg-green-600 text-white' : 'bg-stone-200 text-stone-500 hover:bg-stone-300'
+                        }`}
+                      >
+                        {item.discount ? 'Cambiar Desc.' : 'Aplicar Desc.'}
+                      </button>
                     </div>
                     <div className="text-right min-w-[50px]">
-                      <p className="font-black text-stone-800 text-xs">${item.price * item.quantity}</p>
+                      <p className="font-black text-stone-800 text-xs">${(item.price * item.quantity) - calculateItemDiscount(item)}</p>
+                      {item.discount && (
+                        <p className="text-[8px] text-stone-400 line-through">${item.price * item.quantity}</p>
+                      )}
                     </div>
                     <button onClick={() => removeFromCart(itemKey)} className="text-stone-300 hover:text-red-500 transition-colors">
                       <Trash2 size={14} />
@@ -941,12 +1157,18 @@ export const VentasModule = () => {
             )}
           </div>
 
-          <div className="p-4 bg-stone-50 border-t border-stone-200 space-y-3">
-            <div className="flex justify-between text-stone-500 text-xs font-bold">
+          <div className="p-4 bg-stone-50 border-t border-stone-200 space-y-2">
+            <div className="flex justify-between text-stone-500 text-[10px] font-bold uppercase tracking-wider">
               <span>Subtotal</span>
               <span>${subtotal}</span>
             </div>
-            <div className="flex justify-between text-xl font-black text-stone-900">
+            {totalDiscount > 0 && (
+              <div className="flex justify-between text-green-600 text-[10px] font-bold uppercase tracking-wider">
+                <span>Descuento</span>
+                <span>-${totalDiscount}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xl font-black text-stone-900 pt-1 border-t border-stone-100">
               <span>Total</span>
               <span>${total}</span>
             </div>
@@ -1056,8 +1278,57 @@ export const VentasModule = () => {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showDiscountSelector && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowDiscountSelector(null)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-stone-900">Aplicar Descuento</h2>
+                <button onClick={() => setShowDiscountSelector(null)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-3 max-h-[400px] overflow-y-auto noscrollbar pr-2">
+                <button
+                  onClick={() => applyDiscountToItem(showDiscountSelector, null)}
+                  className="w-full p-4 rounded-2xl border-2 border-dashed border-stone-200 text-stone-400 font-bold hover:border-stone-300 hover:bg-stone-50 transition-all text-sm"
+                >
+                  Sin Descuento
+                </button>
+                
+                {discounts.map((discount, idx) => (
+                  <button
+                    key={`disc-${discount.id}-${idx}`}
+                    onClick={() => applyDiscountToItem(showDiscountSelector, discount)}
+                    className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
+                      cart.find(i => getCartItemKey(i) === showDiscountSelector)?.discount?.id === discount.id
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-stone-100 hover:border-stone-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-black text-stone-900">{discount.name}</p>
+                        <p className="text-xs text-stone-500 font-bold uppercase">
+                          {discount.type === 'percentage' ? `${discount.value}% de descuento` : `$${discount.value} de descuento`}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-green-600">
+                        <Tag size={20} />
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showPrintModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[180] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1075,12 +1346,12 @@ export const VentasModule = () => {
                   <Check size={48} strokeWidth={3} />
                 </div>
                 <h2 className="text-4xl font-black mb-2 text-stone-900">¡Venta Exitosa!</h2>
-                <p className="text-stone-500 mb-8 text-lg font-bold">Ticket #{showPrintModal.id.slice(-6).toUpperCase()}</p>
+                <p className="text-stone-500 mb-8 text-lg font-bold">Ticket #{showPrintModal.id?.slice(-6).toUpperCase()}</p>
                 
                 <div className="flex flex-col gap-4">
                   <button
                     onClick={() => {
-                      alert(`Imprimiendo Ticket y Comanda...`);
+                      setShowReceipt({ ...showPrintModal, items: showPrintModal.items } as Sale);
                       setShowPrintModal(null);
                     }}
                     className="w-full py-5 bg-stone-900 text-white font-black rounded-2xl shadow-xl hover:bg-stone-800 transition-all uppercase tracking-widest text-sm"
@@ -1098,157 +1369,22 @@ export const VentasModule = () => {
             </motion.div>
           </div>
         )}
+        {showReceipt && (
+          <UnifiedPrintModal 
+            key="receipt-modal"
+            sale={showReceipt} 
+            items={showReceipt.items} 
+            onClose={() => setShowReceipt(null)} 
+          />
+        )}
+        {showComanda && (
+          <UnifiedPrintModal 
+            key="comanda-modal"
+            items={showComanda} 
+            onClose={() => setShowComanda(null)} 
+          />
+        )}
       </AnimatePresence>
-    </div>
-  );
-};
-
-export const ShiftSummaryModal = ({ summary, onClose }: { summary: ShiftSummary, onClose: () => void }) => {
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 print:p-0">
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }} 
-        className="absolute inset-0 bg-stone-900/60 backdrop-blur-sm print:hidden" 
-      />
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }} 
-        animate={{ scale: 1, opacity: 1 }} 
-        exit={{ scale: 0.9, opacity: 0 }} 
-        className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:max-w-none print:w-full"
-      >
-        <div className="p-8 print:p-4 max-h-[90vh] overflow-y-auto noscrollbar">
-          <div className="flex justify-between items-start mb-8 print:mb-4">
-            <div>
-              <h2 className="text-3xl font-black text-stone-900 mb-1">Resumen de Cierre</h2>
-              <p className="text-stone-500 font-medium">Turno finalizado con éxito</p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="bg-brand-yellow px-4 py-2 rounded-2xl font-black text-stone-900 print:hidden">
-                #{summary.shift_id.slice(-6).toUpperCase()}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-8 print:space-y-4">
-            <div>
-              <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <div className="w-1 h-1 bg-brand-red rounded-full" />
-                Información de Turno
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Nombre vendedor</span>
-                  <span className="font-black text-stone-900">{summary.user_name}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Apertura de turno</span>
-                  <span className="font-black text-stone-900">{new Date(summary.start_time).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Cierre de turno</span>
-                  <span className="font-black text-stone-900">{new Date(summary.end_time).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <div className="w-1 h-1 bg-brand-red rounded-full" />
-                EFECTIVO
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Fondo anterior</span>
-                  <span className="font-black text-stone-900">${summary.initial_cash}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Cobro en efectivo</span>
-                  <span className="font-black text-green-600">+${summary.cash_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Reembolsos en efectivo</span>
-                  <span className="font-black text-red-600">-${summary.refunds_cash}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Ingresos/egresos</span>
-                  <span className={`font-black ${summary.movements_net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {summary.movements_net >= 0 ? '+' : ''}${summary.movements_net}
-                  </span>
-                </div>
-                <div className="pt-3 border-t border-stone-100 flex justify-between items-center text-base">
-                  <span className="text-stone-900 font-black uppercase tracking-tighter">Efectivo teórico en caja</span>
-                  <span className="font-black text-brand-red text-xl">${summary.theoretical_cash}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Cantidad de efectivo real</span>
-                  <span className="font-black text-stone-900">${summary.real_cash}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Descuadre</span>
-                  <span className={`font-black ${summary.difference >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {summary.difference >= 0 ? '+' : ''}${summary.difference}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <div className="w-1 h-1 bg-brand-red rounded-full" />
-                RESUMEN DE VENTA
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Ventas brutas</span>
-                  <span className="font-black text-stone-900">${summary.gross_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Reembolsos</span>
-                  <span className="font-black text-red-600">-${summary.total_refunds}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Descuentos</span>
-                  <span className="font-black text-stone-900">${summary.discounts}</span>
-                </div>
-                <div className="pt-3 border-t border-stone-100 flex justify-between items-center text-base">
-                  <span className="text-stone-900 font-black uppercase tracking-tighter">VENTAS NETAS</span>
-                  <span className="font-black text-stone-900 text-xl">${summary.net_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm pl-4">
-                  <span className="text-stone-400 font-bold">Efectivo</span>
-                  <span className="font-black text-stone-600">${summary.cash_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm pl-4">
-                  <span className="text-stone-400 font-bold">Por tarjeta</span>
-                  <span className="font-black text-stone-600">${summary.card_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm pl-4">
-                  <span className="text-stone-400 font-bold">Por QR</span>
-                  <span className="font-black text-stone-600">${summary.qr_sales}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-stone-500 font-bold">Impuestos</span>
-                  <span className="font-black text-stone-900">${summary.taxes}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 print:hidden">
-            <button 
-              onClick={() => {
-                window.print();
-                onClose();
-              }}
-              className="w-full py-5 bg-brand-red text-white font-black rounded-2xl shadow-xl shadow-brand-red/20 uppercase tracking-widest text-lg"
-            >
-              IMPRIMIR Y SALIR
-            </button>
-          </div>
-        </div>
-      </motion.div>
     </div>
   );
 };

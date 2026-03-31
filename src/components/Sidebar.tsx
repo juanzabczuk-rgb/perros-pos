@@ -27,12 +27,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen = false, 
   onClose = () => {} 
 }) => {
-  const { user, rolePermissions, setUser, setActiveOperator } = useApp();
+  const { user, activeOperator, rolePermissions, setUser, setActiveOperator } = useApp();
 
-  if (!user) return null;
+  if (!user || !activeOperator) return null;
 
-  const userPermissions = rolePermissions.find(rp => rp.id === user.role)?.modules || 
-    (user.role === 'owner' ? ['pos', 'inventory', 'customers', 'stats', 'staff', 'settings'] : []);
+  const userPermissions = rolePermissions.find(rp => rp.id === activeOperator.role)?.modules || 
+    (activeOperator.role === 'owner' ? ['ventas', 'inventory', 'customers', 'dashboard', 'staff', 'settings'] : []);
   
   const menuItems = [
     { id: 'ventas', label: 'Ventas', icon: ShoppingCart },
@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Estadísticas', icon: LayoutDashboard },
     { id: 'staff', label: 'Personal', icon: UserCircle },
     { id: 'settings', label: 'Ajustes', icon: Settings },
-  ].filter(item => userPermissions.includes(item.id === 'ventas' ? 'pos' : (item.id === 'dashboard' ? 'stats' : item.id)));
+  ].filter(item => userPermissions.includes(item.id));
 
   const handleLogout = async () => {
     await authService.logout();

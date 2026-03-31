@@ -55,7 +55,9 @@ service cloud.firestore {
              validString(data.name, 1, 100) &&
              (!('email' in data) || isValidEmail(data.email)) &&
              data.role in ['owner', 'admin', 'seller'] &&
-             validString(data.branch_id, 1, 50);
+             validString(data.branch_id, 1, 50) &&
+             (!('pin' in data) || data.pin == "" || (data.pin is string && data.pin.size() >= 4 && data.pin.size() <= 60)) &&
+             (!('branch_name' in data) || data.branch_name is string);
     }
 
     function isValidProduct(data) {

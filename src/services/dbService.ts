@@ -87,6 +87,13 @@ export const createSale = async (user: User, shiftId: string, cart: CartItem[], 
         customerSnap = await transaction.get(customerRef);
       }
 
+      const shiftRef = doc(db, 'shifts', shiftId);
+      const shiftSnap = await transaction.get(shiftRef);
+      if (shiftSnap.exists() && paymentType === 'Efectivo') {
+        const currentExpected = (shiftSnap.data() as { expected_cash: number }).expected_cash || 0;
+        transaction.update(shiftRef, { expected_cash: currentExpected + total });
+      }
+
       transaction.set(saleRef, {
         branch_id: user.branch_id,
         user_id: user.id,

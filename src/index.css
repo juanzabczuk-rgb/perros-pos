@@ -33,6 +33,57 @@
   scrollbar-width: none;
 }
 
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+  
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+    overflow: visible !important;
+  }
+
+  /* Show only the print container and its children */
+  .print-container,
+  .print-container * {
+    visibility: visible;
+  }
+
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+  }
+
+  /* Force display for print elements */
+  .print-only {
+    display: block !important;
+  }
+
+  /* Hide elements that shouldn't be printed even if inside print-container */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure background colors and images print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
 /* Tablet Landscape Optimization */
 @media (min-width: 1024px) {
   .tablet-landscape-pos .cart-container {

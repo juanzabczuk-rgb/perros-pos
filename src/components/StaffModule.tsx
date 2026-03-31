@@ -27,7 +27,7 @@ import {
   Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import bcrypt from 'bcryptjs';
+import { toast } from 'sonner';
 import { db } from '../firebase';
 import { useApp } from '../context/AppContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreUtils';
@@ -98,29 +98,26 @@ export const StaffModule = () => {
         
         // Only update PIN if a new one was entered
         if (pin && pin.length >= 4) {
-          updateData.pin = await bcrypt.hash(pin, 10);
+          updateData.pin = pin;
         }
         
         await updateDoc(doc(db, 'empleados', editingUser.id), updateData);
+        toast.success('Empleado actualizado correctamente');
         setEditingUser(null);
       } else {
-        let hashedPin = '';
-        if (pin && pin.length >= 4) {
-          hashedPin = await bcrypt.hash(pin, 10);
-        }
-        
         const newUser: User & { pin: string } = {
           id: userId,
           name: data.name as string,
           role: data.role as User['role'],
           branch_id: data.branch_id as string,
           email: email,
-          pin: hashedPin,
+          pin: pin || '',
           branch_name: branchName
         };
         if (!newUser.email) delete (newUser as { email?: string }).email;
 
         await setDoc(doc(db, 'empleados', userId), newUser);
+        toast.success('Empleado creado correctamente');
       }
       setShowAdd(false);
     } catch (err) {
@@ -133,9 +130,10 @@ export const StaffModule = () => {
     if (!deletingUser) return;
     try {
       await deleteDoc(doc(db, 'empleados', deletingUser.id));
+      toast.success('Empleado eliminado');
       setDeletingUser(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${deletingUser.id}`);
+      handleFirestoreError(err, OperationType.DELETE, `empleados/${deletingUser.id}`);
     }
   };
 
@@ -241,6 +239,10 @@ export const StaffModule = () => {
                 <MapPin size={14} className="text-stone-300" />
                 {u.branch_name || 'Sin sucursal'}
               </div>
+              <div className="flex items-center gap-3 text-sm text-stone-500 font-medium">
+                <Clock size={14} className="text-stone-300" />
+                PIN: <span className="text-stone-900 font-black">{u.pin || 'No configurado'}</span>
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -294,7 +296,7 @@ export const StaffModule = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-stone-400 uppercase mb-2">PIN (4-6 dígitos)</label>
-                      <input name="pin" type="password" maxLength={6} pattern="\d*" className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red" placeholder={editingUser ? "Dejar vacío para no cambiar" : "1234"} />
+                      <input name="pin" type="text" inputMode="numeric" maxLength={6} defaultValue={editingUser?.pin} className="w-full px-4 py-3 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red" placeholder={editingUser ? "Dejar vacío para no cambiar" : "1234"} />
                     </div>
                   </div>
                   <div>
@@ -335,11 +337,11 @@ export const StaffModule = () => {
                   const currentPerms = (rolePermissions || []).find(rp => rp.id === roleId)?.modules || [];
                   const modules = [
                     { id: 'ventas', label: 'Ventas', icon: DollarSign },
-                    { id: 'inventario', label: 'Inventario', icon: Package },
-                    { id: 'clientes', label: 'Clientes', icon: Users },
-                    { id: 'estadisticas', label: 'Estadísticas', icon: TrendingUp },
-                    { id: 'personal', label: 'Personal', icon: UserCircle },
-                    { id: 'ajustes', label: 'Ajustes', icon: Settings },
+                    { id: 'inventory', label: 'Stock', icon: Package },
+                    { id: 'customers', label: 'Clientes', icon: Users },
+                    { id: 'dashboard', label: 'Estadísticas', icon: TrendingUp },
+                    { id: 'staff', label: 'Personal', icon: UserCircle },
+                    { id: 'settings', label: 'Ajustes', icon: Settings },
                   ];
 
                   return (
