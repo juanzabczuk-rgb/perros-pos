@@ -32,13 +32,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!user || !activeOperator) return null;
 
   const userPermissions = rolePermissions.find(rp => rp.id === activeOperator.role)?.modules || 
-    (activeOperator.role === 'owner' ? ['ventas', 'inventory', 'customers', 'dashboard', 'staff', 'settings'] : []);
+    (activeOperator.role === 'owner' ? ['ventas', 'inventory', 'customers', 'estadisticas', 'staff', 'settings'] : []);
   
   const menuItems = [
     { id: 'ventas', label: 'Ventas', icon: ShoppingCart },
     { id: 'inventory', label: 'Stock', icon: Package },
     { id: 'customers', label: 'Clientes', icon: Users },
-    { id: 'dashboard', label: 'Estadísticas', icon: LayoutDashboard },
+    { id: 'estadisticas', label: 'ESTADISTICAS', icon: LayoutDashboard },
     { id: 'staff', label: 'Personal', icon: UserCircle },
     { id: 'settings', label: 'Ajustes', icon: Settings },
   ].filter(item => userPermissions.includes(item.id));

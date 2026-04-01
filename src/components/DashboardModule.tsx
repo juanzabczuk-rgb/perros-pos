@@ -44,17 +44,22 @@ interface DashboardStats {
 export const DashboardModule = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activeReport, setActiveReport] = useState('summary');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const { user } = useApp();
 
   useEffect(() => {
     if (!user?.branch_id) return () => {};
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
 
     const q = query(
       collection(db, 'sales'),
-      where('created_at', '>=', Timestamp.fromDate(today))
+      where('created_at', '>=', Timestamp.fromDate(start)),
+      where('created_at', '<=', Timestamp.fromDate(end))
     );
 
     const unsub = onSnapshot(q, async (snapshot) => {
@@ -121,7 +126,7 @@ export const DashboardModule = () => {
     return () => {
       unsub();
     };
-  }, [user?.branch_id]);
+  }, [user?.branch_id, startDate, endDate]);
 
   if (!stats) return (
     <div className="p-8 flex items-center justify-center h-full">
@@ -146,7 +151,7 @@ export const DashboardModule = () => {
       {/* Reports Sidebar */}
       <div className="w-64 bg-white border-r border-stone-200 flex flex-col">
         <div className="p-6 border-b border-stone-200">
-          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">Estadísticas</h2>
+          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">ESTADISTICAS</h2>
           <p className="text-xs text-stone-400 font-bold mt-1">REPORTES DEL DÍA</p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-1 noscrollbar">
@@ -169,6 +174,39 @@ export const DashboardModule = () => {
 
       {/* Report Content */}
       <div className="flex-1 overflow-y-auto p-8 noscrollbar">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">
+              {activeReport === 'summary' ? 'Resumen del Periodo' : 
+               activeReport === 'top_sales' ? 'Top 12 de Ventas' :
+               activeReport === 'by_payment' ? 'Tipo de Pago' :
+               activeReport === 'cash' ? 'Caja' :
+               activeReport === 'discounts' ? 'Descuentos Aplicados' : 'Reporte'}
+            </h1>
+            <p className="text-stone-500 font-medium">Visualización de las ventas en el rango seleccionado</p>
+          </div>
+          <div className="flex items-center gap-4 bg-white px-6 py-3 rounded-[24px] border border-stone-100 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Calendar size={16} className="text-stone-400" />
+              <input 
+                type="date" 
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-stone-900 focus:ring-0 p-0"
+              />
+            </div>
+            <span className="text-stone-300 font-bold">al</span>
+            <div className="flex items-center gap-2">
+              <input 
+                type="date" 
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-transparent border-none text-sm font-black text-stone-900 focus:ring-0 p-0"
+              />
+            </div>
+          </div>
+        </div>
+
         <AnimatePresence mode="wait">
           <motion.div
             key={activeReport}
@@ -179,17 +217,6 @@ export const DashboardModule = () => {
           >
             {activeReport === 'summary' && (
               <div className="space-y-8">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Resumen de Hoy</h1>
-                    <p className="text-stone-500 font-medium">Visualización en tiempo real de las ventas</p>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-stone-100 shadow-sm">
-                    <Calendar size={16} className="text-stone-400" />
-                    <span className="text-sm font-black text-stone-900">{new Date().toLocaleDateString()}</span>
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white p-8 rounded-[40px] border border-stone-100 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
@@ -200,12 +227,12 @@ export const DashboardModule = () => {
                         <DollarSign className="text-white" size={24} />
                       </div>
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-1">Ventas Totales</p>
-                      <h3 className="text-4xl font-black text-stone-900">${stats.todaySales}</h3>
+                      <h3 className="text-4xl font-black text-stone-900">${stats.todaySales.toLocaleString()}</h3>
                       <div className="mt-4 flex items-center gap-2">
                         <span className="flex items-center text-[10px] font-black text-green-500 bg-green-50 px-2 py-1 rounded-lg">
                           <ArrowUpRight size={12} /> +12.5%
                         </span>
-                        <span className="text-[10px] font-bold text-stone-400">vs ayer</span>
+                        <span className="text-[10px] font-bold text-stone-400">vs anterior</span>
                       </div>
                     </div>
                   </div>
@@ -218,12 +245,12 @@ export const DashboardModule = () => {
                         <ShoppingBag className="text-white" size={24} />
                       </div>
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-1">Cant. Transacciones</p>
-                      <h3 className="text-4xl font-black text-stone-900">{stats.todayCount}</h3>
+                      <h3 className="text-4xl font-black text-stone-900">{stats.todayCount.toLocaleString()}</h3>
                       <div className="mt-4 flex items-center gap-2">
                         <span className="flex items-center text-[10px] font-black text-green-500 bg-green-50 px-2 py-1 rounded-lg">
                           <ArrowUpRight size={12} /> +5
                         </span>
-                        <span className="text-[10px] font-bold text-stone-400">vs ayer</span>
+                        <span className="text-[10px] font-bold text-stone-400">vs anterior</span>
                       </div>
                     </div>
                   </div>
@@ -238,13 +265,13 @@ export const DashboardModule = () => {
                       </div>
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-1">Ticket Promedio</p>
                       <h3 className="text-4xl font-black text-stone-900">
-                        ${stats.todayCount > 0 ? (stats.todaySales / stats.todayCount).toFixed(2) : 0}
+                        ${stats.todayCount > 0 ? (stats.todaySales / stats.todayCount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 0}
                       </h3>
                       <div className="mt-4 flex items-center gap-2">
                         <span className="flex items-center text-[10px] font-black text-red-500 bg-red-50 px-2 py-1 rounded-lg">
                           <ArrowDownRight size={12} /> -2.1%
                         </span>
-                        <span className="text-[10px] font-bold text-stone-400">vs ayer</span>
+                        <span className="text-[10px] font-bold text-stone-400">vs anterior</span>
                       </div>
                     </div>
                   </div>
@@ -299,7 +326,6 @@ export const DashboardModule = () => {
 
             {activeReport === 'top_sales' && (
               <div className="space-y-6">
-                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Top 12 de Ventas</h1>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {stats.topProducts.map((p, i) => (
                     <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
@@ -320,7 +346,6 @@ export const DashboardModule = () => {
 
             {activeReport === 'by_payment' && (
               <div className="space-y-6">
-                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Tipo de Pago</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {stats.salesByPayment.map((p, i) => (
                     <div key={i} className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm flex items-center justify-between">
@@ -342,7 +367,6 @@ export const DashboardModule = () => {
 
             {activeReport === 'cash' && (
               <div className="space-y-6">
-                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Caja</h1>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="bg-white p-8 rounded-[32px] border border-stone-200 shadow-sm">
                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Efectivo en Caja</p>
@@ -368,7 +392,6 @@ export const DashboardModule = () => {
             )}
             {activeReport === 'discounts' && (
               <div className="space-y-6">
-                <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight mb-8">Descuentos Aplicados</h1>
                 <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm">
                   <div className="flex items-center justify-between mb-8">
                     <div>

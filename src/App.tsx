@@ -80,7 +80,7 @@ const App = () => {
 
   const renderModule = () => {
     switch (activeTab) {
-      case 'dashboard': return <DashboardModule />;
+      case 'estadisticas': return <DashboardModule />;
       case 'ventas': return <VentasModule />;
       case 'inventory': return <InventoryModule />;
       case 'customers': return <CustomersModule />;
@@ -114,7 +114,7 @@ const App = () => {
                 {activeTab === 'ventas' ? 'Punto de Venta' : 
                  activeTab === 'inventory' ? 'Stock de Productos' :
                  activeTab === 'customers' ? 'Gestión de Clientes' :
-                 activeTab === 'dashboard' ? 'Estadísticas y Reportes' :
+                 activeTab === 'estadisticas' ? 'Estadísticas y Reportes' :
                  activeTab === 'staff' ? 'Gestión de Personal' : 'Ajustes'}
               </h1>
             </div>

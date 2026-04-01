@@ -339,7 +339,7 @@ export const StaffModule = () => {
                     { id: 'ventas', label: 'Ventas', icon: DollarSign },
                     { id: 'inventory', label: 'Stock', icon: Package },
                     { id: 'customers', label: 'Clientes', icon: Users },
-                    { id: 'dashboard', label: 'Estadísticas', icon: TrendingUp },
+                    { id: 'estadisticas', label: 'ESTADISTICAS', icon: TrendingUp },
                     { id: 'staff', label: 'Personal', icon: UserCircle },
                     { id: 'settings', label: 'Ajustes', icon: Settings },
                   ];
