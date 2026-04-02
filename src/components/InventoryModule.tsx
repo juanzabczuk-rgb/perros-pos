@@ -294,31 +294,29 @@ export const InventoryModule = () => {
 
   const sections = [
     { id: 'products', label: 'Productos', icon: Package },
-    { id: 'stock', label: 'Stock', icon: Store },
     { id: 'categories', label: 'Categorías', icon: Tag },
     { id: 'discounts', label: 'Descuentos', icon: Percent },
   ];
 
   return (
-    <div className="flex h-full bg-stone-50 overflow-hidden">
-      {/* Inventory Sidebar */}
-      <div className="w-64 bg-white border-r border-stone-200 flex flex-col">
-        <div className="p-6 border-b border-stone-200">
-          <h2 className="text-xl font-black text-stone-900 uppercase tracking-tight">Inventario</h2>
-          <p className="text-xs text-stone-400 font-bold mt-1">GESTIÓN DE STOCK</p>
+    <div className="flex h-full bg-stone-50 overflow-hidden">      {/* Inventory Sidebar */}
+      <div className="w-44 bg-white border-r border-stone-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-stone-200">
+          <h2 className="text-base font-black text-stone-900 uppercase tracking-tight leading-none">Inventario</h2>
+          <p className="text-[8px] text-stone-400 font-bold mt-1 uppercase tracking-widest">Gestión de Stock</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-1 noscrollbar">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 noscrollbar">
           {sections.map((section) => (
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-black transition-all ${
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black transition-all ${
                 activeSection === section.id
                   ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20'
                   : 'text-stone-500 hover:bg-stone-50'
               }`}
             >
-              <section.icon size={18} />
+              <section.icon size={14} />
               {section.label}
             </button>
           ))}
@@ -326,7 +324,7 @@ export const InventoryModule = () => {
       </div>
 
       {/* Inventory Content */}
-      <div className="flex-1 overflow-y-auto p-8 noscrollbar">
+      <div className="flex-1 overflow-y-auto p-5 noscrollbar">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}
@@ -336,142 +334,103 @@ export const InventoryModule = () => {
             transition={{ duration: 0.2 }}
           >
             {activeSection === 'products' && (
-              <div className="space-y-8">
+              <div className="space-y-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Productos</h1>
-                    <p className="text-stone-500 font-medium">Catálogo completo de artículos y combos</p>
+                    <h1 className="text-xl font-black text-stone-900 uppercase tracking-tight">Productos</h1>
+                    <p className="text-[10px] text-stone-500 font-medium">Catálogo de artículos y combos</p>
                   </div>
-                  <button 
-                    onClick={() => setShowAdd(true)}
-                    className="bg-brand-red text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <PlusCircle size={20} />
-                    Nuevo Producto
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
-                        <th className="px-8 py-6">Producto</th>
-                        <th className="px-8 py-6">Categoría</th>
-                        <th className="px-8 py-6">Costo</th>
-                        <th className="px-8 py-6">Precio</th>
-                        <th className="px-8 py-6 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-200">
-                      {products.map(product => (
-                        <tr key={product.id} className="hover:bg-stone-50/50 transition-colors group">
-                          <td className="px-8 py-6">
-                            <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                                {product.image_url ? (
-                                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <Package size={20} className="text-stone-300" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-black text-stone-900">{product.name}</p>
-                                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-8 py-6">
-                            <span className="text-xs font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
-                              {product.category}
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 font-bold text-stone-600">${product.cost}</td>
-                          <td className="px-8 py-6 font-black text-stone-900">${product.price}</td>
-                          <td className="px-8 py-6 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => setEditing(product)} className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all">
-                                <Edit2 size={18} />
-                              </button>
-                              <button onClick={() => setDeletingProduct(product)} className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'stock' && (
-              <div className="space-y-8">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Stock</h1>
-                    <p className="text-stone-500 font-medium">Control de existencias por sucursal</p>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-stone-200 shadow-sm">
-                    <Store size={16} className="text-stone-400" />
-                    <select 
-                      value={selectedBranchId}
-                      onChange={(e) => setSelectedBranchId(e.target.value)}
-                      className="bg-transparent border-none focus:ring-0 font-black text-stone-900 text-xs uppercase tracking-widest"
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-stone-200 shadow-sm">
+                      <Store size={12} className="text-stone-400" />
+                      <select 
+                        value={selectedBranchId}
+                        onChange={(e) => setSelectedBranchId(e.target.value)}
+                        className="bg-transparent border-none focus:ring-0 font-black text-stone-900 text-[9px] uppercase tracking-widest p-0"
+                      >
+                        <option value="">Sucursal</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button 
+                      onClick={() => setShowAdd(true)}
+                      className="bg-brand-red text-white px-3 py-1.5 rounded-lg font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98] text-[10px]"
                     >
-                      <option value="">Seleccionar Sucursal</option>
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
+                      <PlusCircle size={16} />
+                      Nuevo
+                    </button>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
-                  <table className="w-full text-left">
+                <div className="bg-white rounded-[24px] shadow-sm border border-stone-200 overflow-x-auto noscrollbar">
+                  <table className="w-full text-left min-w-[650px]">
                     <thead>
-                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
-                        <th className="px-8 py-6">Producto</th>
-                        <th className="px-8 py-6">Stock Actual</th>
-                        <th className="px-8 py-6">Estado</th>
-                        <th className="px-8 py-6 text-right">Acciones</th>
+                      <tr className="bg-stone-50 text-stone-500 text-[8px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                        <th className="px-4 py-3">Producto</th>
+                        <th className="px-4 py-3">Stock</th>
+                        <th className="px-4 py-3">Categoría</th>
+                        <th className="px-4 py-3">Costo</th>
+                        <th className="px-4 py-3">Precio</th>
+                        <th className="px-4 py-3 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-200">
-                      {products.filter(p => !p.is_composite).map(product => {
+                      {products.map(product => {
                         const productStock = stock.find(s => s.id === product.id);
                         const quantity = productStock?.quantity || 0;
                         return (
                           <tr key={product.id} className="hover:bg-stone-50/50 transition-colors group">
-                            <td className="px-8 py-6">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center">
-                                  <Package size={18} className="text-stone-400" />
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-stone-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                                  {product.image_url ? (
+                                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <Package size={14} className="text-stone-300" />
+                                  )}
                                 </div>
                                 <div>
-                                  <p className="font-black text-stone-900 text-sm">{product.name}</p>
-                                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
+                                  <p className="font-black text-stone-900 text-[11px] leading-tight">{product.name}</p>
+                                  <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">{product.sku}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-8 py-6">
-                              <span className="text-lg font-black text-stone-900">{quantity}</span>
-                              <span className="ml-1 text-[10px] font-bold text-stone-400 uppercase tracking-widest">{product.unit || 'un'}</span>
+                            <td className="px-4 py-3">
+                              {!product.is_composite ? (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-sm font-black ${quantity <= 5 ? 'text-red-600' : 'text-stone-900'}`}>
+                                    {quantity}
+                                  </span>
+                                  <button 
+                                    onClick={() => setAdjustingStock({ ...product, quantity })}
+                                    className="p-1 text-stone-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-all"
+                                    title="Ajustar Stock"
+                                  >
+                                    <Store size={10} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[8px] font-black text-stone-400 uppercase tracking-widest italic">Compuesto</span>
+                              )}
                             </td>
-                            <td className="px-8 py-6">
-                              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                quantity <= 5 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
-                              }`}>
-                                {quantity <= 5 ? 'Stock Bajo' : 'Normal'}
+                            <td className="px-4 py-3">
+                              <span className="text-[8px] font-black px-2 py-0.5 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
+                                {product.category}
                               </span>
                             </td>
-                            <td className="px-8 py-6 text-right">
-                              <button 
-                                onClick={() => setAdjustingStock({ ...product, quantity })}
-                                className="px-4 py-2 bg-stone-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
-                              >
-                                Ajustar
-                              </button>
+                            <td className="px-4 py-3 font-bold text-stone-600 text-[11px]">${product.cost}</td>
+                            <td className="px-4 py-3 font-black text-stone-900 text-[11px]">${product.price}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => setEditing(product)} className="p-1 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-lg transition-all">
+                                  <Edit2 size={14} />
+                                </button>
+                                <button onClick={() => setDeletingProduct(product)} className="p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -483,32 +442,32 @@ export const InventoryModule = () => {
             )}
 
             {activeSection === 'categories' && (
-              <div className="max-w-2xl space-y-8">
+              <div className="max-w-2xl space-y-6">
                 <div>
-                  <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Categorías</h1>
-                  <p className="text-stone-500 font-medium">Organización de productos por grupos</p>
+                  <h1 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Categorías</h1>
+                  <p className="text-xs text-stone-500 font-medium">Organización de productos por grupos</p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[40px] border border-stone-200 shadow-sm space-y-8">
-                  <form onSubmit={handleSaveCategory} className="flex gap-3">
+                <div className="bg-white p-6 rounded-[32px] border border-stone-200 shadow-sm space-y-6">
+                  <form onSubmit={handleSaveCategory} className="flex gap-2">
                     <input 
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       placeholder="Nueva categoría..."
-                      className="flex-1 px-6 py-4 bg-stone-50 rounded-2xl border-none focus:ring-2 focus:ring-brand-red font-bold"
+                      className="flex-1 px-5 py-3 bg-stone-50 rounded-xl border-none focus:ring-2 focus:ring-brand-red font-bold text-sm"
                     />
-                    <button type="submit" className="bg-stone-900 text-white px-8 rounded-2xl font-black hover:bg-stone-800 transition-all uppercase tracking-widest text-xs">
+                    <button type="submit" className="bg-stone-900 text-white px-6 rounded-xl font-black hover:bg-stone-800 transition-all uppercase tracking-widest text-[10px]">
                       {editingCategory ? 'Guardar' : 'Agregar'}
                     </button>
                   </form>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {categories.map(cat => (
-                      <div key={cat.id} className="flex items-center justify-between p-5 bg-stone-50 rounded-2xl group border border-stone-100 hover:border-stone-200 transition-all">
-                        <span className="font-black text-stone-900 uppercase tracking-widest text-xs">{cat.name}</span>
+                      <div key={cat.id} className="flex items-center justify-between p-4 bg-stone-50 rounded-xl group border border-stone-100 hover:border-stone-200 transition-all">
+                        <span className="font-black text-stone-900 uppercase tracking-widest text-[10px]">{cat.name}</span>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => { setEditingCategory(cat); setNewCategoryName(cat.name); }} className="p-2 text-stone-400 hover:text-brand-red"><Edit2 size={16} /></button>
-                          <button onClick={() => handleDeleteCategory(cat.id)} className="p-2 text-stone-400 hover:text-red-600"><Trash2 size={16} /></button>
+                          <button onClick={() => { setEditingCategory(cat); setNewCategoryName(cat.name); }} className="p-1.5 text-stone-400 hover:text-brand-red"><Edit2 size={14} /></button>
+                          <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-stone-400 hover:text-red-600"><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ))}
@@ -518,62 +477,62 @@ export const InventoryModule = () => {
             )}
 
             {activeSection === 'discounts' && (
-              <div className="space-y-8">
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h1 className="text-3xl font-black text-stone-900 uppercase tracking-tight">Descuentos</h1>
-                    <p className="text-stone-500 font-medium">Promociones y rebajas aplicables</p>
+                    <h1 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Descuentos</h1>
+                    <p className="text-xs text-stone-500 font-medium">Promociones y rebajas aplicables</p>
                   </div>
                   <button 
                     onClick={() => setShowAddDiscount(true)}
-                    className="bg-brand-red text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    className="bg-brand-red text-white px-4 py-2 rounded-xl font-black flex items-center gap-2 shadow-lg shadow-brand-red/20 transition-all hover:scale-[1.02] active:scale-[0.98] text-xs"
                   >
-                    <Percent size={20} />
-                    Nuevo Descuento
+                    <Percent size={18} />
+                    Nuevo
                   </button>
                 </div>
 
-                <div className="bg-white rounded-[40px] shadow-sm border border-stone-200 overflow-hidden">
+                <div className="bg-white rounded-[32px] shadow-sm border border-stone-200 overflow-hidden">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-stone-50 text-stone-500 text-[10px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
-                        <th className="px-8 py-6">Nombre</th>
-                        <th className="px-8 py-6">Valor</th>
-                        <th className="px-8 py-6">Tipo</th>
-                        <th className="px-8 py-6">Estado</th>
-                        <th className="px-8 py-6 text-right">Acciones</th>
+                      <tr className="bg-stone-50 text-stone-500 text-[9px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                        <th className="px-6 py-4">Nombre</th>
+                        <th className="px-6 py-4">Valor</th>
+                        <th className="px-6 py-4">Tipo</th>
+                        <th className="px-6 py-4">Estado</th>
+                        <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-200">
                       {discounts.map(discount => (
                         <tr key={discount.id} className="hover:bg-stone-50/50 transition-colors group">
-                          <td className="px-8 py-6 font-black text-stone-900 uppercase tracking-widest text-xs">{discount.name}</td>
-                          <td className="px-8 py-6 font-black text-stone-900">
+                          <td className="px-6 py-4 font-black text-stone-900 uppercase tracking-widest text-[10px]">{discount.name}</td>
+                          <td className="px-6 py-4 font-black text-stone-900 text-xs">
                             {discount.type === 'percentage' ? `${discount.value}%` : `$${discount.value}`}
                           </td>
-                          <td className="px-8 py-6">
-                            <span className="text-[10px] font-black px-3 py-1 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
+                          <td className="px-6 py-4">
+                            <span className="text-[9px] font-black px-2 py-0.5 bg-stone-100 text-stone-500 rounded-full uppercase tracking-widest">
                               {discount.type === 'percentage' ? 'Porcentaje' : 'Fijo'}
                             </span>
                           </td>
-                          <td className="px-8 py-6">
-                            <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-0.5 bg-green-100 text-green-600 rounded-full text-[9px] font-black uppercase tracking-widest">
                               Activo
                             </span>
                           </td>
-                          <td className="px-8 py-6 text-right">
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button 
                                 onClick={() => { setEditingDiscount(discount); setShowAddDiscount(true); }}
-                                className="p-2 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-xl transition-all"
+                                className="p-1.5 text-stone-400 hover:text-brand-red hover:bg-red-50 rounded-lg transition-all"
                               >
-                                <Edit2 size={18} />
+                                <Edit2 size={16} />
                               </button>
                               <button 
                                 onClick={() => setDeletingDiscount(discount)}
-                                className="p-2 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                               >
-                                <Trash2 size={18} />
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           </td>

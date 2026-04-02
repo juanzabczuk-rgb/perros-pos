@@ -435,58 +435,65 @@ export const StaffModule = () => {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 noscrollbar bg-stone-50/30">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex-1 overflow-y-auto p-6 noscrollbar bg-stone-50/30">
+                <div className="bg-white rounded-[24px] border border-stone-200 shadow-sm overflow-hidden">
                   {filteredShifts.length === 0 ? (
-                    <div className="col-span-full py-20 text-center">
-                      <Clock size={48} className="mx-auto text-stone-200 mb-4" />
-                      <p className="text-stone-400 font-bold uppercase tracking-widest">No hay turnos en este período</p>
+                    <div className="py-16 text-center">
+                      <Clock size={40} className="mx-auto text-stone-200 mb-4" />
+                      <p className="text-stone-400 font-bold uppercase tracking-widest text-xs">No hay turnos en este período</p>
                     </div>
                   ) : (
-                    filteredShifts.map((s, idx) => {
-                      const start = s.start_time.toDate ? s.start_time.toDate() : new Date(s.start_time);
-                      const end = s.end_time?.toDate ? s.end_time.toDate() : (s.end_time ? new Date(s.end_time) : null);
-                      const actualEnd = end;
-                      const duration = actualEnd ? (actualEnd.getTime() - start.getTime()) / (1000 * 60 * 60) : 0;
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-stone-50 text-stone-500 text-[9px] uppercase tracking-[0.15em] font-black border-b border-stone-200">
+                          <th className="px-6 py-4">Fecha</th>
+                          <th className="px-6 py-4">Sucursal</th>
+                          <th className="px-6 py-4">Entrada</th>
+                          <th className="px-6 py-4">Salida</th>
+                          <th className="px-6 py-4">Duración</th>
+                          <th className="px-6 py-4 text-right">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {filteredShifts.map((s, idx) => {
+                          const start = s.start_time.toDate ? s.start_time.toDate() : new Date(s.start_time);
+                          const end = s.end_time?.toDate ? s.end_time.toDate() : (s.end_time ? new Date(s.end_time) : null);
+                          const duration = end ? (end.getTime() - start.getTime()) / (1000 * 60 * 60) : 0;
 
-                      return (
-                        <div key={idx} className="bg-white p-6 rounded-3xl border border-stone-200 shadow-sm hover:shadow-md transition-all">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center">
-                                <Calendar size={18} className="text-stone-400" />
-                              </div>
-                              <div>
-                                <p className="font-black text-stone-900 uppercase tracking-tight">{start.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })}</p>
-                                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{s.branch_name}</p>
-                              </div>
-                            </div>
-                            <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                              s.status === 'open' ? 'bg-green-100 text-green-600' : 'bg-stone-100 text-stone-500'
-                            }`}>
-                              {s.status === 'open' ? 'Activo' : 'Cerrado'}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-stone-50">
-                            <div className="flex items-center gap-6">
-                              <div>
-                                <p className="text-[10px] font-black text-stone-400 uppercase mb-1">Entrada</p>
-                                <p className="font-bold text-stone-800">{start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                              </div>
-                              <div>
-                                <p className="text-[10px] font-black text-stone-400 uppercase mb-1">Salida</p>
-                                <p className="font-bold text-stone-800">{actualEnd ? actualEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'En curso'}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-black text-stone-400 uppercase mb-1">Duración</p>
-                              <p className="text-lg font-black text-brand-red">{duration.toFixed(1)}h</p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
+                          return (
+                            <tr key={idx} className="hover:bg-stone-50/50 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Calendar size={12} className="text-stone-400" />
+                                  <p className="font-bold text-stone-900 uppercase tracking-tight text-[10px]">
+                                    {start.toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                                  </p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="text-[9px] font-black text-stone-500 uppercase tracking-widest">{s.branch_name}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="font-bold text-stone-700 text-[10px]">{start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="font-bold text-stone-700 text-[10px]">{end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'En curso'}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <p className="font-black text-brand-red text-[10px]">{duration.toFixed(1)}h</p>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                                  s.status === 'open' ? 'bg-green-100 text-green-600' : 'bg-stone-100 text-stone-500'
+                                }`}>
+                                  {s.status === 'open' ? 'Activo' : 'Cerrado'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   )}
                 </div>
               </div>
