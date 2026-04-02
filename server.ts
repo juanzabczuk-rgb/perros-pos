@@ -15,6 +15,10 @@ try {
     firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   }
 
+  // Use environment variables if available, otherwise fallback to config file
+  const projectId = (process.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId) as string;
+  const databaseId = (process.env.VITE_FIREBASE_DATABASE_ID || firebaseConfig.firestoreDatabaseId) as string;
+
   // Initialize with default credentials - most reliable in Cloud Run/Vercel
   if (!admin.apps.length) {
     console.log(`Initializing Firebase Admin...`);
@@ -26,34 +30,26 @@ try {
         const serviceAccount = JSON.parse(serviceAccountVar);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
-          databaseId: (firebaseConfig.firestoreDatabaseId as string) && (firebaseConfig.firestoreDatabaseId as string) !== '(default)' 
-            ? (firebaseConfig.firestoreDatabaseId as string) 
-            : undefined
+          databaseId: databaseId && databaseId !== '(default)' ? databaseId : undefined
         });
       } catch (e) {
         console.error("Error parsing FIREBASE_SERVICE_ACCOUNT env var:", e);
-        admin.initializeApp({
-          projectId: firebaseConfig.projectId as string
-        });
+        admin.initializeApp({ projectId });
       }
     } else {
-      admin.initializeApp({
-        projectId: firebaseConfig.projectId as string
-      });
+      admin.initializeApp({ projectId });
     }
   }
   
   // Use the database ID from config if available
-  const databaseId = (firebaseConfig.firestoreDatabaseId as string) && (firebaseConfig.firestoreDatabaseId as string) !== '(default)' 
-    ? (firebaseConfig.firestoreDatabaseId as string) 
-    : undefined;
+  const finalDatabaseId = databaseId && databaseId !== '(default)' ? databaseId : undefined;
 
   // @ts-expect-error - databaseId is supported in newer versions of firebase-admin
-  db = databaseId ? admin.firestore(databaseId) : admin.firestore();
+  db = finalDatabaseId ? admin.firestore(finalDatabaseId) : admin.firestore();
   
   console.log(`Firebase Admin initialized.`);
   console.log(`Project ID: ${admin.app().options.projectId}`);
-  console.log(`Database ID: ${databaseId || '(default)'}`);
+  console.log(`Database ID: ${finalDatabaseId || '(default)'}`);
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
   // Don't exit immediately, allow server to start so health checks pass

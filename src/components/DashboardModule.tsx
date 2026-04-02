@@ -183,7 +183,9 @@ export const DashboardModule = () => {
                activeReport === 'cash' ? 'Caja' :
                activeReport === 'discounts' ? 'Descuentos Aplicados' : 'Reporte'}
             </h1>
-            <p className="text-stone-500 font-medium">Visualización de las ventas en el rango seleccionado</p>
+            <p className="text-stone-500 font-medium">
+              Ventas del {new Date(startDate + 'T00:00:00').toLocaleDateString('es-AR')} al {new Date(endDate + 'T00:00:00').toLocaleDateString('es-AR')}
+            </p>
           </div>
           <div className="flex items-center gap-4 bg-white px-6 py-3 rounded-[24px] border border-stone-100 shadow-sm">
             <div className="flex items-center gap-2">
