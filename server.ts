@@ -88,13 +88,16 @@ async function startServer() {
       const operatorData = operatorDoc.data();
       const storedPin = operatorData?.pin;
 
-      console.log(`Verificando PIN para operador: ${operatorId}`);
-
+      console.log(`[AUTH] Verificando PIN para: ${operatorId}`);
+      console.log(`[AUTH] Project: ${admin.app().options.projectId}`);
+      
       // If no PIN is configured, allow entry (optional security)
       if (storedPin === undefined || storedPin === null || storedPin === "") {
-        console.log("Operador sin PIN configurado, permitiendo acceso.");
+        console.log("[AUTH] Operador sin PIN configurado.");
         return res.json({ success: true, operator: { id: operatorDoc.id, ...operatorData } });
       }
+
+      console.log(`[AUTH] PIN almacenado encontrado (longitud: ${String(storedPin).length})`);
 
       // Support both bcrypt and plain text for transition
       let isMatch = false;
@@ -102,20 +105,21 @@ async function startServer() {
       const storedPinStr = String(storedPin).trim();
 
       if (storedPinStr.startsWith('$2a$') || storedPinStr.startsWith('$2b$')) {
+        console.log("[AUTH] Usando comparación BCrypt");
         isMatch = await bcrypt.compare(inputPinStr, storedPinStr);
       } else {
-        // Robust comparison: convert both to string and trim
+        console.log("[AUTH] Usando comparación texto plano");
         isMatch = inputPinStr === storedPinStr;
       }
 
       if (isMatch) {
-        console.log("PIN verificado con éxito.");
+        console.log("[AUTH] PIN correcto.");
         // Return success and operator data (excluding sensitive info)
         const safeData = { ...operatorData };
         delete (safeData as { pin?: string }).pin;
         return res.json({ success: true, operator: { id: operatorDoc.id, ...safeData } });
       } else {
-        console.log("PIN incorrecto.");
+        console.log(`[AUTH] PIN incorrecto. Ingresado: ${inputPinStr.length} chars, Guardado: ${storedPinStr.length} chars`);
         return res.status(401).json({ error: "PIN incorrecto" });
       }
     } catch (error) {
