@@ -88,25 +88,34 @@ async function startServer() {
       const operatorData = operatorDoc.data();
       const storedPin = operatorData?.pin;
 
+      console.log(`Verificando PIN para operador: ${operatorId}`);
+
       // If no PIN is configured, allow entry (optional security)
-      if (!storedPin || storedPin === "") {
+      if (storedPin === undefined || storedPin === null || storedPin === "") {
+        console.log("Operador sin PIN configurado, permitiendo acceso.");
         return res.json({ success: true, operator: { id: operatorDoc.id, ...operatorData } });
       }
 
       // Support both bcrypt and plain text for transition
       let isMatch = false;
-      if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
-        isMatch = await bcrypt.compare(pin, storedPin);
+      const inputPinStr = String(pin).trim();
+      const storedPinStr = String(storedPin).trim();
+
+      if (storedPinStr.startsWith('$2a$') || storedPinStr.startsWith('$2b$')) {
+        isMatch = await bcrypt.compare(inputPinStr, storedPinStr);
       } else {
-        isMatch = pin === storedPin;
+        // Robust comparison: convert both to string and trim
+        isMatch = inputPinStr === storedPinStr;
       }
 
       if (isMatch) {
+        console.log("PIN verificado con éxito.");
         // Return success and operator data (excluding sensitive info)
         const safeData = { ...operatorData };
         delete (safeData as { pin?: string }).pin;
         return res.json({ success: true, operator: { id: operatorDoc.id, ...safeData } });
       } else {
+        console.log("PIN incorrecto.");
         return res.status(401).json({ error: "PIN incorrecto" });
       }
     } catch (error) {

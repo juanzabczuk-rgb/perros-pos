@@ -105,6 +105,7 @@ export const OperatorSelector = () => {
                 <input 
                   type="password" 
                   value={operatorPinInput}
+                  inputMode="numeric"
                   onChange={(e) => {
                     setOperatorPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
                     setOperatorPinError(false);
