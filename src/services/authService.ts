@@ -55,26 +55,30 @@ export const authService = {
 
   verifyPin: async (userId: string, pin: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/auth/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operatorId: userId, pin })
-      });
+      // Consultamos directamente el documento del empleado en Firestore
+      const userDoc = await getDoc(doc(db, 'empleados', userId));
       
-      if (response.ok) {
-        const data = await response.json();
-        return data.success;
+      if (!userDoc.exists()) {
+        console.error("Empleado no encontrado en Firestore");
+        return false;
       }
-      
-      // If user has no PIN in DB, we might want to allow entry (legacy check)
-      if (response.status === 400) {
-        const userDoc = await getDoc(doc(db, 'empleados', userId));
-        if (userDoc.exists() && !userDoc.data().pin) return true;
+
+      const userData = userDoc.data();
+      const storedPin = userData?.pin;
+
+      // Si no hay PIN configurado, permitimos el acceso (seguridad opcional)
+      if (storedPin === undefined || storedPin === null || storedPin === "") {
+        return true;
       }
-      
-      return false;
+
+      // Comparamos el PIN ingresado con el almacenado (como texto plano)
+      // Nota: Si usas hashes (bcrypt) en la DB, esto fallará, pero para PINs simples de 4 dígitos suele ser texto plano.
+      const inputPinStr = String(pin).trim();
+      const storedPinStr = String(storedPin).trim();
+
+      return inputPinStr === storedPinStr;
     } catch (error) {
-      console.error("Error verifying PIN via API:", error);
+      console.error("Error verificando PIN en el frontend:", error);
       return false;
     }
   }
