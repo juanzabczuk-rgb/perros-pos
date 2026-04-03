@@ -48,26 +48,21 @@ try {
   db = finalDatabaseId ? admin.firestore(finalDatabaseId) : admin.firestore();
   
   console.log(`Firebase Admin initialized.`);
-  console.log(`Project ID: ${admin.app().options.projectId}`);
-  console.log(`Database ID: ${finalDatabaseId || '(default)'}`);
 } catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
-  // Don't exit immediately, allow server to start so health checks pass
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
 
-  app.use(express.json());
+app.use(express.json());
 
-  // Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
-  });
+// Health check
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
-  // PIN Verification Endpoint
-  app.post("/api/auth/verify-pin", async (req, res) => {
+// PIN Verification Endpoint
+app.post("/api/auth/verify-pin", async (req, res) => {
     const { operatorId, pin } = req.body;
 
     if (!operatorId || !pin) {
@@ -148,9 +143,12 @@ async function startServer() {
     });
   }
 
+export default app;
+
+// Only listen if not running on Vercel
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
-
-startServer();
