@@ -1,6 +1,15 @@
 {
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.ts" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*).js",
+      "headers": [
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+      ]
+    }
   ]
 }
